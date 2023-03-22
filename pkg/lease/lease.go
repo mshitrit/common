@@ -12,19 +12,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
-	kubernetes "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	LeaseDuration = 3600 * time.Second
-
-	LeaseNamespaceDefault = "node-maintenance"
-	LeaseApiPackage       = "coordination.k8s.io/v1"
+	LeaseApiPackage = "coordination.k8s.io/v1"
 )
-
-var LeaseNamespace = LeaseNamespaceDefault
 
 func CheckLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
 
@@ -43,14 +38,14 @@ func CheckLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
 	return false, nil
 }
 
-func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration time.Duration, holderIdentity string) (*coordv1.Lease, bool, error) {
+func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
 	owner := makeExpectedOwnerOfLease(node)
 	microTimeNow := metav1.NowMicro()
 
 	lease := &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            node.ObjectMeta.Name,
-			Namespace:       LeaseNamespace,
+			Namespace:       leaseNamespace,
 			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
 		Spec: coordv1.LeaseSpec{
@@ -66,7 +61,7 @@ func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration 
 		if errors.IsAlreadyExists(err) {
 
 			nodeName := node.ObjectMeta.Name
-			key := apitypes.NamespacedName{Namespace: LeaseNamespace, Name: nodeName}
+			key := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
 
 			if err := client.Get(context.TODO(), key, lease); err != nil {
 				return nil, false, err
@@ -126,10 +121,10 @@ func UpdateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, 
 	return nil, false
 }
 
-func InvalidateLease(client client.Client, nodeName string) error {
+func InvalidateLease(client client.Client, nodeName string, leaseNamespace string) error {
 	log.Info("Lease object supported, invalidating lease")
 
-	nName := apitypes.NamespacedName{Namespace: LeaseNamespace, Name: nodeName}
+	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
 	lease := &coordv1.Lease{}
 
 	if err := client.Get(context.TODO(), nName, lease); err != nil {
