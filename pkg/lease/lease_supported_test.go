@@ -62,7 +62,7 @@ var _ = Describe("Leases", func() {
 			It(c.info, func() {
 				By(c.info)
 
-				isLeaseSupported, err := checkLeaseSupportedInternal(c.mock)
+				isLeaseSupported, err := CheckLeaseSupportedInternal(c.mock)
 
 				ExpectEqualWithNil(err, c.expectedErr, "error should match")
 				Expect(isLeaseSupported).To(Equal(c.expectedRes))

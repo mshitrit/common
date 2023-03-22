@@ -18,15 +18,15 @@ import (
 )
 
 const (
-	LeaseDuration         = 3600 * time.Second
-	LeaseHolderIdentity   = "node-maintenance"
+	LeaseDuration = 3600 * time.Second
+
 	LeaseNamespaceDefault = "node-maintenance"
 	LeaseApiPackage       = "coordination.k8s.io/v1"
 )
 
 var LeaseNamespace = LeaseNamespaceDefault
 
-func checkLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
+func CheckLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
 
 	groupList, err := cs.Discovery().ServerGroups()
 	if err != nil {
@@ -43,17 +43,7 @@ func checkLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
 	return false, nil
 }
 
-func makeExpectedOwnerOfLease(node *corev1.Node) *metav1.OwnerReference {
-	return &metav1.OwnerReference{
-		APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
-		Kind:       corev1.SchemeGroupVersion.WithKind("Node").Kind,
-		Name:       node.ObjectMeta.Name,
-		UID:        node.ObjectMeta.UID,
-	}
-}
-
-func createOrGetExistingLease(client client.Client, node *corev1.Node, duration time.Duration) (*coordv1.Lease, bool, error) {
-	holderIdentity := LeaseHolderIdentity
+func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration time.Duration, holderIdentity string) (*coordv1.Lease, bool, error) {
 	owner := makeExpectedOwnerOfLease(node)
 	microTimeNow := metav1.NowMicro()
 
@@ -86,6 +76,87 @@ func createOrGetExistingLease(client client.Client, node *corev1.Node, duration 
 		return nil, false, err
 	}
 	return lease, false, nil
+}
+
+func UpdateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (error, bool) {
+
+	needUpdateLease := false
+	setAcquireAndLeaseTransitions := false
+	updateAlreadyOwnedLease := false
+
+	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == holderIdentity {
+		needUpdateLease, setAcquireAndLeaseTransitions = needUpdateOwnedLease(lease, *currentTime, leaseDeadline)
+		if needUpdateLease {
+			updateAlreadyOwnedLease = true
+
+			log.Infof("renew lease owned by nmo setAcquireTime=%t", setAcquireAndLeaseTransitions)
+
+		}
+	} else {
+		// can't update the lease if it is currently valid.
+		if isValidLease(lease, currentTime.Time) {
+			return fmt.Errorf("Can't update valid lease held by different owner"), false
+		}
+		needUpdateLease = true
+
+		log.Info("taking over foreign lease")
+		setAcquireAndLeaseTransitions = true
+	}
+
+	if needUpdateLease {
+		if setAcquireAndLeaseTransitions {
+			lease.Spec.AcquireTime = currentTime
+			if lease.Spec.LeaseTransitions != nil {
+				*lease.Spec.LeaseTransitions += int32(1)
+			} else {
+				lease.Spec.LeaseTransitions = pointer.Int32(1)
+			}
+		}
+		owner := makeExpectedOwnerOfLease(node)
+		lease.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*owner}
+		lease.Spec.HolderIdentity = &holderIdentity
+		lease.Spec.LeaseDurationSeconds = pointer.Int32(int32(leaseDuration.Seconds()))
+		lease.Spec.RenewTime = currentTime
+		if err := client.Update(context.TODO(), lease); err != nil {
+			log.Errorf("Failed to update the lease. node %s error: %v", node.Name, err)
+			return err, updateAlreadyOwnedLease
+		}
+	}
+
+	return nil, false
+}
+
+func InvalidateLease(client client.Client, nodeName string) error {
+	log.Info("Lease object supported, invalidating lease")
+
+	nName := apitypes.NamespacedName{Namespace: LeaseNamespace, Name: nodeName}
+	lease := &coordv1.Lease{}
+
+	if err := client.Get(context.TODO(), nName, lease); err != nil {
+
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	lease.Spec.AcquireTime = nil
+	lease.Spec.LeaseDurationSeconds = nil
+	lease.Spec.RenewTime = nil
+	lease.Spec.LeaseTransitions = nil
+
+	if err := client.Update(context.TODO(), lease); err != nil {
+		return err
+	}
+	return nil
+}
+
+func makeExpectedOwnerOfLease(node *corev1.Node) *metav1.OwnerReference {
+	return &metav1.OwnerReference{
+		APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
+		Kind:       corev1.SchemeGroupVersion.WithKind("Node").Kind,
+		Name:       node.ObjectMeta.Name,
+		UID:        node.ObjectMeta.UID,
+	}
 }
 
 func leaseDueTime(lease *coordv1.Lease) time.Time {
@@ -123,78 +194,4 @@ func isValidLease(lease *coordv1.Lease, currentTime time.Time) bool {
 
 	// valid lease if: due time not in the past and renew time not in the future
 	return !dueTime.Before(currentTime) && !renewTime.After(currentTime)
-}
-
-func updateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, duration time.Duration, leaseDeadline time.Duration) (error, bool) {
-
-	holderIdentity := LeaseHolderIdentity
-
-	needUpdateLease := false
-	setAcquireAndLeaseTransitions := false
-	updateAlreadyOwnedLease := false
-
-	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == holderIdentity {
-		needUpdateLease, setAcquireAndLeaseTransitions = needUpdateOwnedLease(lease, *currentTime, leaseDeadline)
-		if needUpdateLease {
-			updateAlreadyOwnedLease = true
-
-			log.Infof("renew lease owned by nmo setAcquireTime=%t", setAcquireAndLeaseTransitions)
-
-		}
-	} else {
-		// can't update the lease if it is currently valid.
-		if isValidLease(lease, currentTime.Time) {
-			return fmt.Errorf("Can't update valid lease held by different owner"), false
-		}
-		needUpdateLease = true
-
-		log.Info("taking over foreign lease")
-		setAcquireAndLeaseTransitions = true
-	}
-
-	if needUpdateLease {
-		if setAcquireAndLeaseTransitions {
-			lease.Spec.AcquireTime = currentTime
-			if lease.Spec.LeaseTransitions != nil {
-				*lease.Spec.LeaseTransitions += int32(1)
-			} else {
-				lease.Spec.LeaseTransitions = pointer.Int32(1)
-			}
-		}
-		owner := makeExpectedOwnerOfLease(node)
-		lease.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*owner}
-		lease.Spec.HolderIdentity = &holderIdentity
-		lease.Spec.LeaseDurationSeconds = pointer.Int32(int32(duration.Seconds()))
-		lease.Spec.RenewTime = currentTime
-		if err := client.Update(context.TODO(), lease); err != nil {
-			log.Errorf("Failed to update the lease. node %s error: %v", node.Name, err)
-			return err, updateAlreadyOwnedLease
-		}
-	}
-
-	return nil, false
-}
-
-func invalidateLease(client client.Client, nodeName string) error {
-	log.Info("Lease object supported, invalidating lease")
-
-	nName := apitypes.NamespacedName{Namespace: LeaseNamespace, Name: nodeName}
-	lease := &coordv1.Lease{}
-
-	if err := client.Get(context.TODO(), nName, lease); err != nil {
-
-		if errors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	lease.Spec.AcquireTime = nil
-	lease.Spec.LeaseDurationSeconds = nil
-	lease.Spec.RenewTime = nil
-	lease.Spec.LeaseTransitions = nil
-
-	if err := client.Update(context.TODO(), lease); err != nil {
-		return err
-	}
-	return nil
 }

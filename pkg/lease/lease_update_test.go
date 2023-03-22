@@ -20,7 +20,8 @@ import (
 var NowTime = metav1.NowMicro()
 
 const (
-	leaseDeadline = 60 * time.Second
+	leaseDeadline       = 60 * time.Second
+	leaseHolderIdentity = "some-operator"
 )
 
 func getMockNode() *corev1.Node {
@@ -53,7 +54,7 @@ var _ = Describe("Leases", func() {
 			err := cl.Get(context.TODO(), name, currentLease)
 			Expect(err).NotTo(HaveOccurred())
 
-			err, failedUpdateOwnedLease := updateLease(cl, node, currentLease, &NowTime, LeaseDuration, leaseDeadline)
+			err, failedUpdateOwnedLease := UpdateLease(cl, node, currentLease, &NowTime, LeaseDuration, leaseDeadline, leaseHolderIdentity)
 
 			if expectedLease == nil {
 				Expect(err).To(HaveOccurred())
@@ -145,7 +146,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
@@ -188,7 +189,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
@@ -212,7 +213,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: nil,
 					AcquireTime:          &metav1.MicroTime{Time: NowTime.Add(-599 * time.Second)},
 					RenewTime:            nil,
@@ -231,7 +232,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
@@ -255,7 +256,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds() - 42)),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
@@ -274,7 +275,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
@@ -298,7 +299,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &metav1.MicroTime{Time: leaseExpiredTime},
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
@@ -317,7 +318,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &metav1.MicroTime{Time: leaseExpiredTime},
 					RenewTime:            &NowTime,
@@ -342,7 +343,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
@@ -361,7 +362,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
@@ -386,7 +387,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(-1 * time.Second)},
@@ -405,7 +406,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &NowTime,
@@ -430,7 +431,7 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(time.Second)},
@@ -449,7 +450,7 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
 					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(time.Second)},
