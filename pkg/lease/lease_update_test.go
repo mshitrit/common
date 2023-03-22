@@ -92,7 +92,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -101,8 +101,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr("miau"),
-					LeaseDurationSeconds: pointer.Int32Ptr(32000),
+					HolderIdentity:       pointer.String("miau"),
+					LeaseDurationSeconds: pointer.Int32(32000),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: NowTime.Add(-1 * time.Second)},
 					LeaseTransitions:     nil,
@@ -117,7 +117,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -126,8 +126,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr("miau"),
-					LeaseDurationSeconds: pointer.Int32Ptr(44),
+					HolderIdentity:       pointer.String("miau"),
+					LeaseDurationSeconds: pointer.Int32(44),
 					AcquireTime:          &metav1.MicroTime{Time: time.Unix(42, 0)},
 					RenewTime:            &metav1.MicroTime{Time: time.Unix(43, 0)},
 					LeaseTransitions:     nil,
@@ -145,11 +145,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(1),
+					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
 			nil,
@@ -160,7 +160,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -169,11 +169,11 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr("miau"),
-					LeaseDurationSeconds: pointer.Int32Ptr(44),
+					HolderIdentity:       pointer.String("miau"),
+					LeaseDurationSeconds: pointer.Int32(44),
 					AcquireTime:          &metav1.MicroTime{Time: time.Unix(42, 0)},
 					RenewTime:            &metav1.MicroTime{Time: time.Unix(43, 0)},
-					LeaseTransitions:     pointer.Int32Ptr(3),
+					LeaseTransitions:     pointer.Int32(3),
 				},
 			},
 			&coordv1.Lease{
@@ -188,11 +188,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(4),
+					LeaseTransitions:     pointer.Int32(4),
 				},
 			},
 			nil,
@@ -203,7 +203,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -212,11 +212,11 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
 					LeaseDurationSeconds: nil,
 					AcquireTime:          &metav1.MicroTime{Time: NowTime.Add(-599 * time.Second)},
 					RenewTime:            nil,
-					LeaseTransitions:     pointer.Int32Ptr(3),
+					LeaseTransitions:     pointer.Int32(3),
 				},
 			},
 			&coordv1.Lease{
@@ -231,11 +231,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(4),
+					LeaseTransitions:     pointer.Int32(4),
 				},
 			},
 			nil,
@@ -246,7 +246,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -255,8 +255,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds() - 42)),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds() - 42)),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
 					LeaseTransitions:     nil,
@@ -274,11 +274,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(1),
+					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
 			nil,
@@ -289,7 +289,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -298,11 +298,11 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &metav1.MicroTime{Time: leaseExpiredTime},
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
-					LeaseTransitions:     pointer.Int32Ptr(1),
+					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
 			&coordv1.Lease{
@@ -317,11 +317,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &metav1.MicroTime{Time: leaseExpiredTime},
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(1),
+					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
 			nil,
@@ -333,7 +333,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -342,8 +342,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: leaseExpiredTime},
 					LeaseTransitions:     nil,
@@ -361,11 +361,11 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          &NowTime,
 					RenewTime:            &NowTime,
-					LeaseTransitions:     pointer.Int32Ptr(1),
+					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
 			nil,
@@ -377,7 +377,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
 							Kind:       corev1.SchemeGroupVersion.WithKind("Node").Kind,
 							Name:       getMockNode().Name,
@@ -386,8 +386,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(-1 * time.Second)},
 					LeaseTransitions:     nil,
@@ -405,8 +405,8 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &NowTime,
 					LeaseTransitions:     nil,
@@ -421,7 +421,7 @@ var _ = Describe("Leases", func() {
 					Name:      getMockNode().Name,
 					Namespace: LeaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
-						metav1.OwnerReference{
+						{
 							APIVersion: "v1",
 							Kind:       "Node",
 							Name:       "@",
@@ -430,8 +430,8 @@ var _ = Describe("Leases", func() {
 					},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(time.Second)},
 					LeaseTransitions:     nil,
@@ -449,8 +449,8 @@ var _ = Describe("Leases", func() {
 					}},
 				},
 				Spec: coordv1.LeaseSpec{
-					HolderIdentity:       pointer.StringPtr(LeaseHolderIdentity),
-					LeaseDurationSeconds: pointer.Int32Ptr(int32(LeaseDuration.Seconds())),
+					HolderIdentity:       pointer.String(LeaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(LeaseDuration.Seconds())),
 					AcquireTime:          nil,
 					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(time.Second)},
 					LeaseTransitions:     nil,
