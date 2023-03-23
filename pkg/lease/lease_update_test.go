@@ -3,6 +3,7 @@ package lease
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -49,14 +50,14 @@ var _ = Describe("Leases", func() {
 			objs := []runtime.Object{
 				initialLease,
 			}
-			cl := fake.NewFakeClient(objs...)
-
+			cl := fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
+			manager := NewManager(cl)
 			name := apitypes.NamespacedName{Namespace: leaseNamespace, Name: node.Name}
 			currentLease := &coordv1.Lease{}
 			err := cl.Get(context.TODO(), name, currentLease)
 			Expect(err).NotTo(HaveOccurred())
 
-			err, failedUpdateOwnedLease := UpdateLease(cl, node, currentLease, &NowTime, leaseDuration, leaseDeadline, leaseHolderIdentity)
+			failedUpdateOwnedLease, err := manager.UpdateLease(context.Background(), node, currentLease, &NowTime, leaseDuration, leaseDeadline, leaseHolderIdentity)
 
 			if expectedLease == nil {
 				Expect(err).To(HaveOccurred())
@@ -112,7 +113,7 @@ var _ = Describe("Leases", func() {
 				},
 			},
 			nil,
-			fmt.Errorf("Can't update valid lease held by different owner"),
+			fmt.Errorf("can't update valid lease held by different owner"),
 		),
 		Entry("update lease with different holder identity (full init)",
 			&coordv1.Lease{
@@ -463,3 +464,20 @@ var _ = Describe("Leases", func() {
 		),
 	)
 })
+
+func ExpectEqualWithNil(actual, expected interface{}, description string) {
+	// heads up: interfaces representing a pointer are not nil when the pointer is nil
+	if expected == nil || (reflect.ValueOf(expected).Kind() == reflect.Ptr && reflect.ValueOf(expected).IsNil()) {
+		// BeNil() handles pointers correctly
+		ExpectWithOffset(1, actual).To(BeNil(), description)
+	} else {
+		// compare unix time, precision of MicroTime is sometimes different
+		if e, ok := expected.(*metav1.MicroTime); ok {
+			expected = e.Unix()
+			if actual != nil && reflect.ValueOf(actual).Kind() == reflect.Ptr && !reflect.ValueOf(actual).IsNil() {
+				actual = actual.(*metav1.MicroTime).Unix()
+			}
+		}
+		ExpectWithOffset(1, actual).To(Equal(expected), description)
+	}
+}

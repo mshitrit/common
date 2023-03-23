@@ -3,6 +3,8 @@ package lease
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,33 +14,50 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	LeaseApiPackage = "coordination.k8s.io/v1"
+	leaseApiPackage = "coordination.k8s.io/v1"
 )
 
-func CheckLeaseSupportedInternal(cs kubernetes.Interface) (bool, error) {
-
-	groupList, err := cs.Discovery().ServerGroups()
-	if err != nil {
-		return false, err
-	}
-	if groupList != nil {
-		apiVersions := metav1.ExtractGroupVersions(groupList)
-		for _, v := range apiVersions {
-			if v == LeaseApiPackage {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+type Manager interface {
+	CreateOrGetLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
+	UpdateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
+	InvalidateLease(ctx context.Context, nodeName string, leaseNamespace string) error
 }
 
-func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
+type manager struct {
+	client.Client
+	log logr.Logger
+}
+
+func (l *manager) CreateOrGetLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error) {
+	return l.createOrGetExistingLease(ctx, node, duration, holderIdentity, namespace)
+}
+
+func (l *manager) UpdateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
+	return l.updateLease(ctx, node, lease, currentTime, leaseDuration, leaseDeadline, holderIdentity)
+}
+
+func (l *manager) InvalidateLease(ctx context.Context, nodeName string, leaseNamespace string) error {
+	return l.invalidateLease(ctx, nodeName, leaseNamespace)
+}
+
+func NewManager(cl client.Client) Manager {
+	return NewManagerWithCustomLogger(cl, ctrl.Log.WithName("leaseManager"))
+
+}
+
+func NewManagerWithCustomLogger(cl client.Client, log logr.Logger) Manager {
+	return &manager{
+		Client: cl,
+		log:    log,
+	}
+}
+
+func (l *manager) createOrGetExistingLease(_ context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
 	owner := makeExpectedOwnerOfLease(node)
 	microTimeNow := metav1.NowMicro()
 
@@ -57,13 +76,13 @@ func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration 
 		},
 	}
 
-	if err := client.Create(context.TODO(), lease); err != nil {
+	if err := l.Client.Create(context.TODO(), lease); err != nil {
 		if errors.IsAlreadyExists(err) {
 
 			nodeName := node.ObjectMeta.Name
 			key := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
 
-			if err := client.Get(context.TODO(), key, lease); err != nil {
+			if err := l.Client.Get(context.TODO(), key, lease); err != nil {
 				return nil, false, err
 			}
 			return lease, true, nil
@@ -73,8 +92,7 @@ func CreateOrGetExistingLease(client client.Client, node *corev1.Node, duration 
 	return lease, false, nil
 }
 
-func UpdateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (error, bool) {
-
+func (l *manager) updateLease(_ context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
 	needUpdateLease := false
 	setAcquireAndLeaseTransitions := false
 	updateAlreadyOwnedLease := false
@@ -90,7 +108,7 @@ func UpdateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, 
 	} else {
 		// can't update the lease if it is currently valid.
 		if isValidLease(lease, currentTime.Time) {
-			return fmt.Errorf("Can't update valid lease held by different owner"), false
+			return false, fmt.Errorf("can't update valid lease held by different owner")
 		}
 		needUpdateLease = true
 
@@ -112,22 +130,21 @@ func UpdateLease(client client.Client, node *corev1.Node, lease *coordv1.Lease, 
 		lease.Spec.HolderIdentity = &holderIdentity
 		lease.Spec.LeaseDurationSeconds = pointer.Int32(int32(leaseDuration.Seconds()))
 		lease.Spec.RenewTime = currentTime
-		if err := client.Update(context.TODO(), lease); err != nil {
+		if err := l.Client.Update(context.TODO(), lease); err != nil {
 			log.Errorf("Failed to update the lease. node %s error: %v", node.Name, err)
-			return err, updateAlreadyOwnedLease
+			return updateAlreadyOwnedLease, err
 		}
 	}
 
-	return nil, false
+	return false, nil
 }
 
-func InvalidateLease(client client.Client, nodeName string, leaseNamespace string) error {
+func (l *manager) invalidateLease(_ context.Context, nodeName string, leaseNamespace string) error {
 	log.Info("Lease object supported, invalidating lease")
-
 	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
 	lease := &coordv1.Lease{}
 
-	if err := client.Get(context.TODO(), nName, lease); err != nil {
+	if err := l.Client.Get(context.TODO(), nName, lease); err != nil {
 
 		if errors.IsNotFound(err) {
 			return nil
@@ -139,7 +156,7 @@ func InvalidateLease(client client.Client, nodeName string, leaseNamespace strin
 	lease.Spec.RenewTime = nil
 	lease.Spec.LeaseTransitions = nil
 
-	if err := client.Update(context.TODO(), lease); err != nil {
+	if err := l.Client.Update(context.TODO(), lease); err != nil {
 		return err
 	}
 	return nil
