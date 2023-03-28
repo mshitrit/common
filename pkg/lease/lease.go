@@ -18,10 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	leaseApiPackage = "coordination.k8s.io/v1"
-)
-
 type Manager interface {
 	CreateOrGetLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
 	UpdateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
