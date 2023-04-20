@@ -1,5 +1,5 @@
 # GO_VERSION refers to the version of Golang to be downloaded when running dockerized version
-GO_VERSION = 1.19
+GO_VERSION = 1.20
 
 # IMAGE_REGISTRY used to indicate the registery/group for the operator, bundle and catalog
 IMAGE_REGISTRY = quay.io/medik8s
