@@ -19,5 +19,11 @@ jobs: # jobs to run
       with:
         fetch-depth: 0
 
+    - name: Verify imports are sorted
+      run: make test-imports
+
+    - name: Verify there are no packages to vendor
+      run: make verify-vendor
+
     - name: Run checks and unit tests
       run: make check
