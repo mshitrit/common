@@ -3,10 +3,9 @@ package lease
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
 
+	"github.com/go-logr/logr"
 	log "github.com/sirupsen/logrus"
 
 	coordv1 "k8s.io/api/coordination/v1"
@@ -15,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
