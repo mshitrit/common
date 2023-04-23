@@ -33,6 +33,7 @@ func getMockNode() *corev1.Node {
 			Name: "miau",
 			UID:  "foobar",
 		},
+		TypeMeta: metav1.TypeMeta{Kind: "Node", APIVersion: "v1"},
 	}
 	return node
 }

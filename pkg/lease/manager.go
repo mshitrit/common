@@ -9,7 +9,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	coordv1 "k8s.io/api/coordination/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
@@ -19,9 +18,9 @@ import (
 )
 
 type Manager interface {
-	CreateOrGetLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
-	UpdateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
-	InvalidateLease(ctx context.Context, nodeName string, leaseNamespace string) error
+	CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
+	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
+	InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error
 }
 
 type manager struct {
@@ -29,16 +28,16 @@ type manager struct {
 	log logr.Logger
 }
 
-func (l *manager) CreateOrGetLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error) {
-	return l.createOrGetExistingLease(ctx, node, duration, holderIdentity, namespace)
+func (l *manager) CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error) {
+	return l.createOrGetExistingLease(ctx, obj, duration, holderIdentity, namespace)
 }
 
-func (l *manager) UpdateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
-	return l.updateLease(ctx, node, lease, currentTime, leaseDuration, leaseDeadline, holderIdentity)
+func (l *manager) UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
+	return l.updateLease(ctx, obj, lease, currentTime, leaseDuration, leaseDeadline, holderIdentity)
 }
 
-func (l *manager) InvalidateLease(ctx context.Context, nodeName string, leaseNamespace string) error {
-	return l.invalidateLease(ctx, nodeName, leaseNamespace)
+func (l *manager) InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
+	return l.invalidateLease(ctx, objName, leaseNamespace)
 }
 
 func NewManager(cl client.Client) Manager {
@@ -53,13 +52,13 @@ func NewManagerWithCustomLogger(cl client.Client, log logr.Logger) Manager {
 	}
 }
 
-func (l *manager) createOrGetExistingLease(ctx context.Context, node *corev1.Node, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
-	owner := makeExpectedOwnerOfLease(node)
+func (l *manager) createOrGetExistingLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
+	owner := makeExpectedOwnerOfLease(obj)
 	microTimeNow := metav1.NowMicro()
 
 	lease := &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            node.ObjectMeta.Name,
+			Name:            obj.GetName(),
 			Namespace:       leaseNamespace,
 			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
@@ -75,8 +74,8 @@ func (l *manager) createOrGetExistingLease(ctx context.Context, node *corev1.Nod
 	if err := l.Client.Create(ctx, lease); err != nil {
 		if errors.IsAlreadyExists(err) {
 
-			nodeName := node.ObjectMeta.Name
-			key := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
+			objName := obj.GetName()
+			key := apitypes.NamespacedName{Namespace: leaseNamespace, Name: objName}
 
 			if err := l.Client.Get(ctx, key, lease); err != nil {
 				return nil, false, err
@@ -88,7 +87,7 @@ func (l *manager) createOrGetExistingLease(ctx context.Context, node *corev1.Nod
 	return lease, false, nil
 }
 
-func (l *manager) updateLease(ctx context.Context, node *corev1.Node, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
+func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
 	needUpdateLease := false
 	setAcquireAndLeaseTransitions := false
 	updateAlreadyOwnedLease := false
@@ -121,13 +120,13 @@ func (l *manager) updateLease(ctx context.Context, node *corev1.Node, lease *coo
 				lease.Spec.LeaseTransitions = pointer.Int32(1)
 			}
 		}
-		owner := makeExpectedOwnerOfLease(node)
+		owner := makeExpectedOwnerOfLease(obj)
 		lease.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*owner}
 		lease.Spec.HolderIdentity = &holderIdentity
 		lease.Spec.LeaseDurationSeconds = pointer.Int32(int32(leaseDuration.Seconds()))
 		lease.Spec.RenewTime = currentTime
 		if err := l.Client.Update(ctx, lease); err != nil {
-			log.Errorf("Failed to update the lease. node %s error: %v", node.Name, err)
+			log.Errorf("Failed to update the lease. obj %s error: %v", obj.GetName(), err)
 			return updateAlreadyOwnedLease, err
 		}
 	}
@@ -135,9 +134,9 @@ func (l *manager) updateLease(ctx context.Context, node *corev1.Node, lease *coo
 	return false, nil
 }
 
-func (l *manager) invalidateLease(ctx context.Context, nodeName string, leaseNamespace string) error {
+func (l *manager) invalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
 	log.Info("Lease object supported, invalidating lease")
-	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: nodeName}
+	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: objName}
 	lease := &coordv1.Lease{}
 
 	if err := l.Client.Get(ctx, nName, lease); err != nil {
@@ -158,12 +157,13 @@ func (l *manager) invalidateLease(ctx context.Context, nodeName string, leaseNam
 	return nil
 }
 
-func makeExpectedOwnerOfLease(node *corev1.Node) *metav1.OwnerReference {
+func makeExpectedOwnerOfLease(obj client.Object) *metav1.OwnerReference {
+
 	return &metav1.OwnerReference{
-		APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
-		Kind:       corev1.SchemeGroupVersion.WithKind("Node").Kind,
-		Name:       node.ObjectMeta.Name,
-		UID:        node.ObjectMeta.UID,
+		APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
+		Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+		Name:       obj.GetName(),
+		UID:        obj.GetUID(),
 	}
 }
 
