@@ -135,7 +135,7 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 }
 
 func (l *manager) invalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
-	log.Info("Lease object supported, invalidating lease")
+	log.Info("invalidating lease")
 	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: objName}
 	lease := &coordv1.Lease{}
 
