@@ -18,8 +18,13 @@ import (
 )
 
 type Manager interface {
+	//CreateOrGetLease will get a lease or create it if it does not exist for the specified duration.
+	//The bool return value will indicate whether the lease was retrieved (true) or created (false).
 	CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
+	//UpdateLease will extend lease duration by leaseDuration in case it's expired or in case it'll expire before leaseDeadline.
+	//The bool is an indication whether prior to the update the lease was already held by holderIdentity (true) or not (false).
 	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
+	//InvalidateLease will release the lease.
 	InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error
 }
 
