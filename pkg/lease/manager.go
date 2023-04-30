@@ -62,6 +62,10 @@ func (l *manager) createOrGetExistingLease(ctx context.Context, obj client.Objec
 			Namespace:       leaseNamespace,
 			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
+		},
 		Spec: coordv1.LeaseSpec{
 			HolderIdentity:       &holderIdentity,
 			LeaseDurationSeconds: pointer.Int32(int32(duration.Seconds())),
