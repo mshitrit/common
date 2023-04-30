@@ -58,7 +58,7 @@ var _ = Describe("Leases", func() {
 			err := cl.Get(context.TODO(), name, currentLease)
 			Expect(err).NotTo(HaveOccurred())
 
-			failedUpdateOwnedLease, err := manager.UpdateLease(context.Background(), node, currentLease, &NowTime, leaseDuration, leaseDeadline, leaseHolderIdentity)
+			failedUpdateOwnedLease, err := manager.UpdateLease(context.Background(), node, currentLease, leaseDuration, leaseDeadline, leaseHolderIdentity)
 
 			if expectedLease == nil {
 				Expect(err).To(HaveOccurred())

@@ -23,7 +23,7 @@ type Manager interface {
 	CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
 	//UpdateLease will extend lease duration by leaseDuration in case it's expired or in case it'll expire before leaseDeadline.
 	//The bool is an indication whether prior to the update the lease was already held by holderIdentity (true) or not (false).
-	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
+	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
 	//InvalidateLease will release the lease.
 	InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error
 }
@@ -37,8 +37,9 @@ func (l *manager) CreateOrGetLease(ctx context.Context, obj client.Object, durat
 	return l.createOrGetExistingLease(ctx, obj, duration, holderIdentity, namespace)
 }
 
-func (l *manager) UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
-	return l.updateLease(ctx, obj, lease, currentTime, leaseDuration, leaseDeadline, holderIdentity)
+func (l *manager) UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
+	now := metav1.NowMicro()
+	return l.updateLease(ctx, obj, lease, &now, leaseDuration, leaseDeadline, holderIdentity)
 }
 
 func (l *manager) InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
