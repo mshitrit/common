@@ -111,7 +111,7 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 
 		}
 	} else {
-		// can't update the lease if it is currently valid.
+		// can't take over the lease if it is currently valid.
 		if isValidLease(lease, currentTime.Time) {
 			return false, fmt.Errorf("can't update valid lease held by different owner")
 		}
