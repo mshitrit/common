@@ -106,7 +106,7 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 		if needUpdateLease {
 			updateAlreadyOwnedLease = true
 
-			log.Infof("renew lease owned by nmo setAcquireTime=%t", setAcquireAndLeaseTransitions)
+			log.Infof("renew lease owned by %s setAcquireTime=%t", holderIdentity, setAcquireAndLeaseTransitions)
 
 		}
 	} else {
