@@ -25,7 +25,7 @@ type Manager interface {
 	//The bool is an indication whether prior to the update the lease was already held by holderIdentity (true) or not (false).
 	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
 	//InvalidateLease will release the lease.
-	InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error
+	InvalidateLease(ctx context.Context, obj client.Object) error
 }
 
 type manager struct {
@@ -44,8 +44,8 @@ func (l *manager) UpdateLease(ctx context.Context, obj client.Object, lease *coo
 	return l.updateLease(ctx, obj, lease, &now, leaseDuration, leaseDeadline, holderIdentity)
 }
 
-func (l *manager) InvalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
-	return l.invalidateLease(ctx, objName, leaseNamespace)
+func (l *manager) InvalidateLease(ctx context.Context, obj client.Object) error {
+	return l.invalidateLease(ctx, obj)
 }
 
 func NewManager(cl client.Client, holderIdentity string, namespace string) Manager {
@@ -148,26 +148,32 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 	return false, nil
 }
 
-func (l *manager) invalidateLease(ctx context.Context, objName string, leaseNamespace string) error {
+func (l *manager) invalidateLease(ctx context.Context, obj client.Object) error {
 	log.Info("invalidating lease")
-	nName := apitypes.NamespacedName{Namespace: leaseNamespace, Name: objName}
+	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
 	lease := &coordv1.Lease{}
 
-	if err := l.Client.Get(ctx, nName, lease); err != nil {
+	getOption := &metav1.GetOptions{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
+		},
+	}
+
+	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
 
 		if errors.IsNotFound(err) {
 			return nil
 		}
+		log.Error(err, "failed to fetch lease to be invalidated")
 		return err
 	}
-	lease.Spec.AcquireTime = nil
-	lease.Spec.LeaseDurationSeconds = nil
-	lease.Spec.RenewTime = nil
-	lease.Spec.LeaseTransitions = nil
 
-	if err := l.Client.Update(ctx, lease); err != nil {
+	if err := l.Client.Delete(ctx, lease); err != nil {
+		log.Error(err, "failed to delete lease to be invalidated")
 		return err
 	}
+
 	return nil
 }
 
