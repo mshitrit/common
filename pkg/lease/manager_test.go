@@ -21,7 +21,8 @@ import (
 var NowTime = metav1.NowMicro()
 
 const (
-	leaseDeadline       = 60 * time.Second
+	//leaseDeadline       = 60 * time.Second
+	leaseDeadline       = leaseDuration
 	leaseHolderIdentity = "some-operator"
 	leaseDuration       = 3600 * time.Second
 	leaseNamespace      = "some-lease-namespace"
@@ -58,7 +59,7 @@ var _ = Describe("Leases", func() {
 			err := cl.Get(context.TODO(), name, currentLease)
 			Expect(err).NotTo(HaveOccurred())
 
-			failedUpdateOwnedLease, err := manager.UpdateLease(context.Background(), node, currentLease, leaseDuration, leaseDeadline, leaseHolderIdentity)
+			err = manager.RequestLease(context.Background(), node, leaseDuration)
 
 			if expectedLease == nil {
 				Expect(err).To(HaveOccurred())
@@ -67,7 +68,6 @@ var _ = Describe("Leases", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(expectedError).NotTo(HaveOccurred())
 
-				Expect(failedUpdateOwnedLease).To(BeFalse())
 				actualLease := &coordv1.Lease{}
 				err = cl.Get(context.TODO(), name, actualLease)
 				Expect(err).NotTo(HaveOccurred())

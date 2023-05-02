@@ -18,12 +18,9 @@ import (
 )
 
 type Manager interface {
-	//CreateOrGetLease will get a lease or create it if it does not exist for the specified duration.
-	//The bool return value will indicate whether the lease was retrieved (true) or created (false).
-	CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error)
-	//UpdateLease will extend lease duration by leaseDuration in case it's expired or in case it'll expire before leaseDeadline.
-	//The bool is an indication whether prior to the update the lease was already held by holderIdentity (true) or not (false).
-	UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error)
+	//RequestLease will create a lease with leaseDuration if it does not exist or extend existing lease duration to leaseDuration.
+	//It'll return an error in case it can't do either (for example if the lease is already taken).
+	RequestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error
 	//InvalidateLease will release the lease.
 	InvalidateLease(ctx context.Context, obj client.Object) error
 }
@@ -35,13 +32,8 @@ type manager struct {
 	log            logr.Logger
 }
 
-func (l *manager) CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error) {
-	return l.createOrGetExistingLease(ctx, obj, duration, holderIdentity, namespace)
-}
-
-func (l *manager) UpdateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
-	now := metav1.NowMicro()
-	return l.updateLease(ctx, obj, lease, &now, leaseDuration, leaseDeadline, holderIdentity)
+func (l *manager) RequestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error {
+	return l.requestLease(ctx, obj, leaseDuration)
 }
 
 func (l *manager) InvalidateLease(ctx context.Context, obj client.Object) error {
@@ -62,14 +54,14 @@ func NewManagerWithCustomLogger(cl client.Client, holderIdentity string, namespa
 	}
 }
 
-func (l *manager) createOrGetExistingLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, leaseNamespace string) (*coordv1.Lease, bool, error) {
+func (l *manager) createLease(ctx context.Context, obj client.Object, duration time.Duration) error {
 	owner := makeExpectedOwnerOfLease(obj)
 	microTimeNow := metav1.NowMicro()
 
 	lease := &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            obj.GetName(),
-			Namespace:       leaseNamespace,
+			Namespace:       l.namespace,
 			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
 		TypeMeta: metav1.TypeMeta{
@@ -77,7 +69,7 @@ func (l *manager) createOrGetExistingLease(ctx context.Context, obj client.Objec
 			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
 		},
 		Spec: coordv1.LeaseSpec{
-			HolderIdentity:       &holderIdentity,
+			HolderIdentity:       &l.holderIdentity,
 			LeaseDurationSeconds: pointer.Int32(int32(duration.Seconds())),
 			AcquireTime:          &microTimeNow,
 			RenewTime:            &microTimeNow,
@@ -86,38 +78,49 @@ func (l *manager) createOrGetExistingLease(ctx context.Context, obj client.Objec
 	}
 
 	if err := l.Client.Create(ctx, lease); err != nil {
-		if errors.IsAlreadyExists(err) {
-
-			objName := obj.GetName()
-			key := apitypes.NamespacedName{Namespace: leaseNamespace, Name: objName}
-
-			if err := l.Client.Get(ctx, key, lease); err != nil {
-				return nil, false, err
-			}
-			return lease, true, nil
-		}
-		return nil, false, err
+		l.log.Error(err, "failed to create lease")
+		return err
 	}
-	return lease, false, nil
+	return nil
 }
 
-func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coordv1.Lease, currentTime *metav1.MicroTime, leaseDuration, leaseDeadline time.Duration, holderIdentity string) (bool, error) {
+func (l *manager) requestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error {
+
+	lease := &coordv1.Lease{}
+
+	getOption := &metav1.GetOptions{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
+		},
+	}
+	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
+	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
+		if errors.IsNotFound(err) {
+			if err = l.createLease(ctx, obj, leaseDuration); err != nil {
+				l.log.Error(err, "couldn't create lease")
+				return err
+			}
+			return nil
+		} else {
+			l.log.Error(err, "couldn't fetch lease")
+			return err
+		}
+	}
+
 	needUpdateLease := false
 	setAcquireAndLeaseTransitions := false
-	updateAlreadyOwnedLease := false
-
-	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == holderIdentity {
-		needUpdateLease, setAcquireAndLeaseTransitions = needUpdateOwnedLease(lease, *currentTime, leaseDeadline)
+	currentTime := metav1.NowMicro()
+	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == l.holderIdentity {
+		needUpdateLease, setAcquireAndLeaseTransitions = needUpdateOwnedLease(lease, currentTime, leaseDuration)
 		if needUpdateLease {
-			updateAlreadyOwnedLease = true
-
-			log.Infof("renew lease owned by %s setAcquireTime=%t", holderIdentity, setAcquireAndLeaseTransitions)
+			log.Infof("renew lease owned by %s setAcquireTime=%t", l.holderIdentity, setAcquireAndLeaseTransitions)
 
 		}
 	} else {
 		// can't take over the lease if it is currently valid.
 		if isValidLease(lease, currentTime.Time) {
-			return false, fmt.Errorf("can't update valid lease held by different owner")
+			return fmt.Errorf("can't update valid lease held by different owner")
 		}
 		needUpdateLease = true
 
@@ -127,7 +130,7 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 
 	if needUpdateLease {
 		if setAcquireAndLeaseTransitions {
-			lease.Spec.AcquireTime = currentTime
+			lease.Spec.AcquireTime = &currentTime
 			if lease.Spec.LeaseTransitions != nil {
 				*lease.Spec.LeaseTransitions += int32(1)
 			} else {
@@ -136,16 +139,16 @@ func (l *manager) updateLease(ctx context.Context, obj client.Object, lease *coo
 		}
 		owner := makeExpectedOwnerOfLease(obj)
 		lease.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*owner}
-		lease.Spec.HolderIdentity = &holderIdentity
+		lease.Spec.HolderIdentity = &l.holderIdentity
 		lease.Spec.LeaseDurationSeconds = pointer.Int32(int32(leaseDuration.Seconds()))
-		lease.Spec.RenewTime = currentTime
+		lease.Spec.RenewTime = &currentTime
 		if err := l.Client.Update(ctx, lease); err != nil {
 			log.Errorf("Failed to update the lease. obj %s error: %v", obj.GetName(), err)
-			return updateAlreadyOwnedLease, err
+			return err
 		}
 	}
 
-	return false, nil
+	return nil
 }
 
 func (l *manager) invalidateLease(ctx context.Context, obj client.Object) error {
@@ -191,7 +194,7 @@ func leaseDueTime(lease *coordv1.Lease) time.Time {
 	return lease.Spec.RenewTime.Time.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
 }
 
-func needUpdateOwnedLease(lease *coordv1.Lease, currentTime metav1.MicroTime, leaseDeadline time.Duration) (bool, bool) {
+func needUpdateOwnedLease(lease *coordv1.Lease, currentTime metav1.MicroTime, requestedLeaseDuration time.Duration) (bool, bool) {
 
 	if lease.Spec.RenewTime == nil || lease.Spec.LeaseDurationSeconds == nil {
 		log.Info("empty renew time or duration in sec")
@@ -205,7 +208,7 @@ func needUpdateOwnedLease(lease *coordv1.Lease, currentTime metav1.MicroTime, le
 		return true, lease.Spec.AcquireTime == nil
 	}
 
-	deadline := currentTime.Add(leaseDeadline)
+	deadline := currentTime.Add(requestedLeaseDuration)
 
 	// about to expire, update the lease but not the acquired time (second value)
 	return dueTime.Before(deadline), false
