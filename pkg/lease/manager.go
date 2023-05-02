@@ -23,6 +23,9 @@ type Manager interface {
 	RequestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error
 	//InvalidateLease will release the lease.
 	InvalidateLease(ctx context.Context, obj client.Object) error
+	//GetLease will try to fetch a lease.
+	//It'll return an error in case it can't (for example if the lease does not exist or is already taken).
+	GetLease(ctx context.Context, obj client.Object) (*coordv1.Lease, error)
 }
 
 type manager struct {
@@ -34,6 +37,10 @@ type manager struct {
 
 func (l *manager) RequestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error {
 	return l.requestLease(ctx, obj, leaseDuration)
+}
+
+func (l *manager) GetLease(ctx context.Context, obj client.Object) (*coordv1.Lease, error) {
+	return l.getLease(ctx, obj)
 }
 
 func (l *manager) InvalidateLease(ctx context.Context, obj client.Object) error {
@@ -86,25 +93,14 @@ func (l *manager) createLease(ctx context.Context, obj client.Object, duration t
 
 func (l *manager) requestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error {
 
-	lease := &coordv1.Lease{}
-
-	getOption := &metav1.GetOptions{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
-			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
-		},
-	}
-	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
-	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
-		if errors.IsNotFound(err) {
-			if err = l.createLease(ctx, obj, leaseDuration); err != nil {
-				l.log.Error(err, "couldn't create lease")
-				return err
-			}
-			return nil
-		} else {
-			l.log.Error(err, "couldn't fetch lease")
+	lease, err := l.getLease(ctx, obj)
+	//couldn't get the lease try to create one
+	if err != nil {
+		if err = l.createLease(ctx, obj, leaseDuration); err != nil {
+			l.log.Error(err, "couldn't create lease")
 			return err
+		} else {
+			return nil
 		}
 	}
 
@@ -153,25 +149,13 @@ func (l *manager) requestLease(ctx context.Context, obj client.Object, leaseDura
 
 func (l *manager) invalidateLease(ctx context.Context, obj client.Object) error {
 	log.Info("invalidating lease")
-	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
-	lease := &coordv1.Lease{}
-
-	getOption := &metav1.GetOptions{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
-			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
-		},
-	}
-
-	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
-
+	lease, err := l.getLease(ctx, obj)
+	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
-		log.Error(err, "failed to fetch lease to be invalidated")
 		return err
 	}
-
 	if err := l.Client.Delete(ctx, lease); err != nil {
 		log.Error(err, "failed to delete lease to be invalidated")
 		return err
@@ -225,4 +209,26 @@ func isValidLease(lease *coordv1.Lease, currentTime time.Time) bool {
 
 	// valid lease if: due time not in the past and renew time not in the future
 	return !dueTime.Before(currentTime) && !renewTime.After(currentTime)
+}
+
+func (l *manager) getLease(ctx context.Context, obj client.Object) (*coordv1.Lease, error) {
+	log.Info("getting lease")
+	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
+	lease := &coordv1.Lease{}
+
+	getOption := &metav1.GetOptions{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
+		},
+	}
+
+	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
+		if !errors.IsNotFound(err) {
+			l.log.Error(err, "couldn't fetch lease")
+		}
+		return nil, err
+	}
+
+	return lease, nil
 }
