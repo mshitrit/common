@@ -11,6 +11,7 @@ import (
 
 	coordv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	apitypes "k8s.io/apimachinery/pkg/types"
@@ -21,7 +22,6 @@ import (
 var NowTime = metav1.NowMicro()
 
 const (
-	//leaseDeadline       = 60 * time.Second
 	leaseDeadline       = leaseDuration
 	leaseHolderIdentity = "some-operator"
 	leaseDuration       = 3600 * time.Second
@@ -68,8 +68,7 @@ var _ = Describe("Leases", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(expectedError).NotTo(HaveOccurred())
 
-				actualLease := &coordv1.Lease{}
-				err = cl.Get(context.TODO(), name, actualLease)
+				actualLease, err := manager.GetLease(context.Background(), node)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(len(actualLease.ObjectMeta.OwnerReferences)).To(Equal(1))
@@ -88,6 +87,14 @@ var _ = Describe("Leases", func() {
 				ExpectEqualWithNil(actualLease.Spec.AcquireTime, expectedLease.Spec.AcquireTime, "acquire time should match")
 				ExpectEqualWithNil(actualLease.Spec.LeaseDurationSeconds, expectedLease.Spec.LeaseDurationSeconds, "actualLease duration should match")
 				ExpectEqualWithNil(actualLease.Spec.LeaseTransitions, expectedLease.Spec.LeaseTransitions, "actualLease transitions should match")
+
+				err = manager.InvalidateLease(context.Background(), node)
+				Expect(err).NotTo(HaveOccurred())
+
+				actualLease, err = manager.GetLease(context.Background(), node)
+				Expect(actualLease).To(BeNil())
+				Expect(errors.IsNotFound(err)).To(BeTrue())
+
 			}
 		},
 
