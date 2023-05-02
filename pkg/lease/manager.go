@@ -30,7 +30,9 @@ type Manager interface {
 
 type manager struct {
 	client.Client
-	log logr.Logger
+	holderIdentity string
+	namespace      string
+	log            logr.Logger
 }
 
 func (l *manager) CreateOrGetLease(ctx context.Context, obj client.Object, duration time.Duration, holderIdentity string, namespace string) (*coordv1.Lease, bool, error) {
@@ -46,15 +48,17 @@ func (l *manager) InvalidateLease(ctx context.Context, objName string, leaseName
 	return l.invalidateLease(ctx, objName, leaseNamespace)
 }
 
-func NewManager(cl client.Client) Manager {
-	return NewManagerWithCustomLogger(cl, ctrl.Log.WithName("leaseManager"))
+func NewManager(cl client.Client, holderIdentity string, namespace string) Manager {
+	return NewManagerWithCustomLogger(cl, holderIdentity, namespace, ctrl.Log.WithName("leaseManager"))
 
 }
 
-func NewManagerWithCustomLogger(cl client.Client, log logr.Logger) Manager {
+func NewManagerWithCustomLogger(cl client.Client, holderIdentity string, namespace string, log logr.Logger) Manager {
 	return &manager{
-		Client: cl,
-		log:    log,
+		Client:         cl,
+		holderIdentity: holderIdentity,
+		namespace:      namespace,
+		log:            log,
 	}
 }
 

@@ -52,7 +52,7 @@ var _ = Describe("Leases", func() {
 				initialLease,
 			}
 			cl := fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
-			manager := NewManager(cl)
+			manager := NewManager(cl, "dummyHolder", "dummyNamespace")
 			name := apitypes.NamespacedName{Namespace: leaseNamespace, Name: node.Name}
 			currentLease := &coordv1.Lease{}
 			err := cl.Get(context.TODO(), name, currentLease)
