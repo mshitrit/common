@@ -62,6 +62,7 @@ func NewManagerWithCustomLogger(cl client.Client, holderIdentity string, namespa
 }
 
 func (l *manager) createLease(ctx context.Context, obj client.Object, duration time.Duration) error {
+	log.Info("create lease")
 	owner := makeExpectedOwnerOfLease(obj)
 	microTimeNow := metav1.NowMicro()
 
@@ -92,7 +93,7 @@ func (l *manager) createLease(ctx context.Context, obj client.Object, duration t
 }
 
 func (l *manager) requestLease(ctx context.Context, obj client.Object, leaseDuration time.Duration) error {
-
+	log.Info("request lease")
 	lease, err := l.getLease(ctx, obj)
 	//couldn't get the lease try to create one
 	if err != nil {
