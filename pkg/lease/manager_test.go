@@ -14,8 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -39,24 +39,39 @@ func getMockNode() *corev1.Node {
 	return node
 }
 
+func getMockPod() *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "miau",
+			UID:  "foobar",
+		},
+		TypeMeta: metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
+	}
+	return pod
+}
+
 var _ = Describe("Leases", func() {
 
 	// if current time is after this time, the lease is expired
 	leaseExpiredTime := NowTime.Add(-leaseDuration).Add(-1 * time.Second)
 	// if lease expires after this time, it should be renewed
-	renewTriggerTime := NowTime.Add(-leaseDuration).Add(leaseDeadline)
+	renewTriggerTime := NowTime
 
 	DescribeTable("Updates",
 		func(initialLease *coordv1.Lease, expectedLease *coordv1.Lease, expectedError error) {
+			//Test Create lease
+			if initialLease == nil {
+				testCreateLease()
+				return
+			}
+
 			node := getMockNode()
 			objs := []runtime.Object{
 				initialLease,
 			}
 			cl := fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 			manager := NewManager(cl, leaseHolderIdentity, leaseNamespace)
-			name := apitypes.NamespacedName{Namespace: leaseNamespace, Name: node.Name}
-			currentLease := &coordv1.Lease{}
-			err := cl.Get(context.TODO(), name, currentLease)
+			_, err := manager.GetLease(context.TODO(), node)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = manager.RequestLease(context.Background(), node, leaseDuration)
@@ -71,22 +86,7 @@ var _ = Describe("Leases", func() {
 				actualLease, err := manager.GetLease(context.Background(), node)
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(len(actualLease.ObjectMeta.OwnerReferences)).To(Equal(1))
-				Expect(len(expectedLease.ObjectMeta.OwnerReferences)).To(Equal(1))
-
-				actualLeaseOwner := actualLease.ObjectMeta.OwnerReferences[0]
-				expectedLeaseOwner := expectedLease.ObjectMeta.OwnerReferences[0]
-
-				Expect(actualLeaseOwner.APIVersion).To(Equal(expectedLeaseOwner.APIVersion))
-				Expect(actualLeaseOwner.Kind).To(Equal(expectedLeaseOwner.Kind))
-				Expect(actualLeaseOwner.Name).To(Equal(expectedLeaseOwner.Name))
-				Expect(actualLeaseOwner.UID).To(Equal(expectedLeaseOwner.UID))
-
-				ExpectEqualWithNil(actualLease.Spec.HolderIdentity, expectedLease.Spec.HolderIdentity, "holder identity should match")
-				ExpectEqualWithNil(actualLease.Spec.RenewTime, expectedLease.Spec.RenewTime, "renew time should match")
-				ExpectEqualWithNil(actualLease.Spec.AcquireTime, expectedLease.Spec.AcquireTime, "acquire time should match")
-				ExpectEqualWithNil(actualLease.Spec.LeaseDurationSeconds, expectedLease.Spec.LeaseDurationSeconds, "actualLease duration should match")
-				ExpectEqualWithNil(actualLease.Spec.LeaseTransitions, expectedLease.Spec.LeaseTransitions, "actualLease transitions should match")
+				compareLeases(expectedLease, actualLease)
 
 				err = manager.InvalidateLease(context.Background(), node)
 				Expect(err).NotTo(HaveOccurred())
@@ -101,7 +101,7 @@ var _ = Describe("Leases", func() {
 		Entry("fail to update valid lease with different holder identity",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -126,7 +126,7 @@ var _ = Describe("Leases", func() {
 		Entry("update lease with different holder identity (full init)",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -147,7 +147,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -169,7 +169,7 @@ var _ = Describe("Leases", func() {
 		Entry("update expired lease with different holder identity (with transition update)",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -190,7 +190,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -212,7 +212,7 @@ var _ = Describe("Leases", func() {
 		Entry("extend lease if same holder and zero duration and renew time (invalid lease)",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -233,7 +233,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -255,7 +255,7 @@ var _ = Describe("Leases", func() {
 		Entry("update lease if same holder and expired lease - check modified lease duration",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -276,7 +276,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -298,7 +298,7 @@ var _ = Describe("Leases", func() {
 		Entry("extend lease if same holder and expired lease (acquire time previously not nil)",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -319,7 +319,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -342,7 +342,7 @@ var _ = Describe("Leases", func() {
 		Entry("extend lease if same holder and expired lease (acquire time previously nil)",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -363,7 +363,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -386,7 +386,7 @@ var _ = Describe("Leases", func() {
 		Entry("extend lease if same holder and lease will expire before current Time + two times the drainer timeout",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -407,7 +407,7 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: corev1.SchemeGroupVersion.WithKind("Node").Version,
@@ -430,7 +430,7 @@ var _ = Describe("Leases", func() {
 		Entry("dont extend lease if same holder and lease not about to expire before current Time + two times the drainertimeout",
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -451,7 +451,31 @@ var _ = Describe("Leases", func() {
 			},
 			&coordv1.Lease{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      getMockNode().Name,
+					Name:      generateLeaseName(getMockNode()),
+					Namespace: leaseNamespace,
+					OwnerReferences: []metav1.OwnerReference{{
+						APIVersion: "v1",
+						Kind:       "Node",
+						Name:       "@",
+						UID:        "#",
+					}},
+				},
+				Spec: coordv1.LeaseSpec{
+					HolderIdentity:       pointer.String(leaseHolderIdentity),
+					LeaseDurationSeconds: pointer.Int32(int32(leaseDuration.Seconds())),
+					AcquireTime:          nil,
+					RenewTime:            &metav1.MicroTime{Time: renewTriggerTime.Add(time.Second)},
+					LeaseTransitions:     nil,
+				},
+			},
+			nil,
+		),
+
+		Entry("create new lease",
+			nil,
+			&coordv1.Lease{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      generateLeaseName(getMockNode()),
 					Namespace: leaseNamespace,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: "v1",
@@ -488,4 +512,76 @@ func ExpectEqualWithNil(actual, expected interface{}, description string) {
 		}
 		ExpectWithOffset(1, actual).To(Equal(expected), description)
 	}
+}
+
+func compareLeases(expectedLease, actualLease *coordv1.Lease) {
+	Expect(len(actualLease.ObjectMeta.OwnerReferences)).To(Equal(1))
+	Expect(len(expectedLease.ObjectMeta.OwnerReferences)).To(Equal(1))
+
+	actualLeaseOwner := actualLease.ObjectMeta.OwnerReferences[0]
+	expectedLeaseOwner := expectedLease.ObjectMeta.OwnerReferences[0]
+
+	Expect(actualLeaseOwner.APIVersion).To(Equal(expectedLeaseOwner.APIVersion))
+	Expect(actualLeaseOwner.Kind).To(Equal(expectedLeaseOwner.Kind))
+	Expect(actualLeaseOwner.Name).To(Equal(expectedLeaseOwner.Name))
+	Expect(actualLeaseOwner.UID).To(Equal(expectedLeaseOwner.UID))
+
+	ExpectEqualWithNil(actualLease.Spec.HolderIdentity, expectedLease.Spec.HolderIdentity, "holder identity should match")
+	ExpectEqualWithNil(actualLease.Spec.RenewTime, expectedLease.Spec.RenewTime, "renew time should match")
+	ExpectEqualWithNil(actualLease.Spec.AcquireTime, expectedLease.Spec.AcquireTime, "acquire time should match")
+	ExpectEqualWithNil(actualLease.Spec.LeaseDurationSeconds, expectedLease.Spec.LeaseDurationSeconds, "actualLease duration should match")
+	ExpectEqualWithNil(actualLease.Spec.LeaseTransitions, expectedLease.Spec.LeaseTransitions, "actualLease transitions should match")
+
+	Expect(actualLease.Name).To(Equal(expectedLease.Name))
+
+}
+
+func generateExpectedLease(obj client.Object) *coordv1.Lease {
+	return &coordv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s_%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName()),
+			Namespace: leaseNamespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+					Name:       obj.GetName(),
+					UID:        obj.GetUID(),
+				},
+			},
+		},
+		Spec: coordv1.LeaseSpec{
+			HolderIdentity:       pointer.String(leaseHolderIdentity),
+			LeaseDurationSeconds: pointer.Int32(int32(leaseDuration.Seconds())),
+			AcquireTime:          &metav1.MicroTime{Time: NowTime.Time},
+			RenewTime:            &metav1.MicroTime{Time: NowTime.Time},
+			LeaseTransitions:     pointer.Int32(0),
+		},
+	}
+}
+
+func testCreateLease() {
+	node := getMockNode()
+	cl := fake.NewClientBuilder().Build()
+	manager := NewManager(cl, leaseHolderIdentity, leaseNamespace)
+	_, err := manager.GetLease(context.Background(), node)
+	Expect(err.Error()).To(ContainSubstring("not found"))
+	err = manager.RequestLease(context.Background(), node, leaseDuration)
+	Expect(err).NotTo(HaveOccurred())
+	actualLease, err := manager.GetLease(context.Background(), node)
+	Expect(err).ToNot(HaveOccurred())
+	compareLeases(generateExpectedLease(node), actualLease)
+	Expect(actualLease.Kind).To(Equal("Lease"))
+	Expect(actualLease.APIVersion).To(Equal("coordination.k8s.io/v1"))
+
+	pod := getMockPod()
+	_, err = manager.GetLease(context.Background(), pod)
+	Expect(err.Error()).To(ContainSubstring("not found"))
+	err = manager.RequestLease(context.Background(), pod, leaseDuration)
+	Expect(err).NotTo(HaveOccurred())
+	actualLeaseFromPod, err := manager.GetLease(context.Background(), pod)
+	Expect(err).ToNot(HaveOccurred())
+	compareLeases(generateExpectedLease(pod), actualLeaseFromPod)
+	Expect(actualLease.Kind).To(Equal("Lease"))
+	Expect(actualLease.APIVersion).To(Equal("coordination.k8s.io/v1"))
 }
