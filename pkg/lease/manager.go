@@ -68,13 +68,9 @@ func (l *manager) createLease(ctx context.Context, obj client.Object, duration t
 
 	lease := &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            obj.GetName(),
+			Name:            generateLeaseName(obj),
 			Namespace:       l.namespace,
 			OwnerReferences: []metav1.OwnerReference{*owner},
-		},
-		TypeMeta: metav1.TypeMeta{
-			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
-			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
 		},
 		Spec: coordv1.LeaseSpec{
 			HolderIdentity:       &l.holderIdentity,
@@ -214,17 +210,10 @@ func isValidLease(lease *coordv1.Lease, currentTime time.Time) bool {
 
 func (l *manager) getLease(ctx context.Context, obj client.Object) (*coordv1.Lease, error) {
 	log.Info("getting lease")
-	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: obj.GetName()}
+	nName := apitypes.NamespacedName{Namespace: l.namespace, Name: generateLeaseName(obj)}
 	lease := &coordv1.Lease{}
 
-	getOption := &metav1.GetOptions{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
-			APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
-		},
-	}
-
-	if err := l.Client.Get(ctx, nName, lease, &client.GetOptions{Raw: getOption}); err != nil {
+	if err := l.Client.Get(ctx, nName, lease); err != nil {
 		if !errors.IsNotFound(err) {
 			l.log.Error(err, "couldn't fetch lease")
 		}
@@ -232,4 +221,8 @@ func (l *manager) getLease(ctx context.Context, obj client.Object) (*coordv1.Lea
 	}
 
 	return lease, nil
+}
+
+func generateLeaseName(obj client.Object) string {
+	return fmt.Sprintf("%s_%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName())
 }
