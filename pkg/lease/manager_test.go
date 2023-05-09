@@ -22,7 +22,6 @@ import (
 var NowTime = metav1.NowMicro()
 
 const (
-	leaseDeadline       = leaseDuration
 	leaseHolderIdentity = "some-operator"
 	leaseDuration       = 3600 * time.Second
 	leaseNamespace      = "some-lease-namespace"
