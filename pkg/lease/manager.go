@@ -224,5 +224,5 @@ func (l *manager) getLease(ctx context.Context, obj client.Object) (*coordv1.Lea
 }
 
 func generateLeaseName(obj client.Object) string {
-	return fmt.Sprintf("%s_%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName())
+	return fmt.Sprintf("%s-%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName())
 }

@@ -538,7 +538,7 @@ func compareLeases(expectedLease, actualLease *coordv1.Lease) {
 func generateExpectedLease(obj client.Object) *coordv1.Lease {
 	return &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s_%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName()),
+			Name:      fmt.Sprintf("%s-%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName()),
 			Namespace: leaseNamespace,
 			OwnerReferences: []metav1.OwnerReference{
 				{
