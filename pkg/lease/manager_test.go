@@ -33,7 +33,7 @@ func getMockNode() *corev1.Node {
 			Name: "miau",
 			UID:  "foobar",
 		},
-		TypeMeta: metav1.TypeMeta{Kind: "Node", APIVersion: "v1"},
+		TypeMeta: metav1.TypeMeta{ /*Kind: "Node", */ APIVersion: "v1"},
 	}
 	return node
 }
@@ -44,7 +44,7 @@ func getMockPod() *corev1.Pod {
 			Name: "miau",
 			UID:  "foobar",
 		},
-		TypeMeta: metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
+		TypeMeta: metav1.TypeMeta{ /*Kind: "Pod", */ APIVersion: "v1"},
 	}
 	return pod
 }
@@ -538,12 +538,12 @@ func compareLeases(expectedLease, actualLease *coordv1.Lease) {
 func generateExpectedLease(obj client.Object) *coordv1.Lease {
 	return &coordv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName()),
+			Name:      fmt.Sprintf("%s-%s", getObjKind(obj), obj.GetName()),
 			Namespace: leaseNamespace,
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: "v1",
-					Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+					Kind:       getObjKind(obj),
 					Name:       obj.GetName(),
 					UID:        obj.GetUID(),
 				},

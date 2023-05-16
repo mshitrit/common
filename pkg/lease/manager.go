@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	coordv1 "k8s.io/api/coordination/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apitypes "k8s.io/apimachinery/pkg/types"
@@ -62,7 +63,7 @@ func NewManagerWithCustomLogger(cl client.Client, holderIdentity string, namespa
 }
 
 func (l *manager) createLease(ctx context.Context, obj client.Object, duration time.Duration) error {
-	log.Info("create lease")
+	log.Info("create lease", "name", obj.GetName(), "group version kind", obj.GetObjectKind().GroupVersionKind().String())
 	owner := makeExpectedOwnerOfLease(obj)
 	microTimeNow := metav1.NowMicro()
 
@@ -165,7 +166,7 @@ func makeExpectedOwnerOfLease(obj client.Object) *metav1.OwnerReference {
 
 	return &metav1.OwnerReference{
 		APIVersion: obj.GetObjectKind().GroupVersionKind().Version,
-		Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+		Kind:       getObjKind(obj),
 		Name:       obj.GetName(),
 		UID:        obj.GetUID(),
 	}
@@ -224,5 +225,19 @@ func (l *manager) getLease(ctx context.Context, obj client.Object) (*coordv1.Lea
 }
 
 func generateLeaseName(obj client.Object) string {
-	return fmt.Sprintf("%s-%s", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName())
+	return fmt.Sprintf("%s-%s", getObjKind(obj), obj.GetName())
+}
+
+func getObjKind(obj client.Object) string {
+	kind := obj.GetObjectKind().GroupVersionKind().Kind
+	if len(kind) == 0 {
+		if _, ok := obj.(*v1.Node); ok {
+			kind = "Node"
+		} else if _, ok := obj.(*v1.Pod); ok {
+			kind = "Pod"
+		} else {
+			kind = "UnknownKind"
+		}
+	}
+	return kind
 }
