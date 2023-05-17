@@ -1,0 +1,29 @@
+# Understanding the workflow file - https://docs.github.com/en/actions/learn-github-actions/understanding-github-actions#understanding-the-workflow-file
+name: Pre Submit # workflow name
+on: # on events
+  push:
+    branches:
+      - main
+      - release-*
+  pull_request:
+    branches:
+      - main
+      - release-*
+jobs: # jobs to run
+  build:
+    name: Test
+    runs-on: ubuntu-22.04 # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Verify imports are sorted
+      run: make test-imports
+
+    - name: Verify there are no packages to vendor
+      run: make verify-vendor
+
+    - name: Run checks and unit tests
+      run: make check
