@@ -25,7 +25,7 @@ var NowTime = metav1.NowMicro()
 const (
 	leaseHolderIdentity = "some-operator"
 	leaseDuration       = 3600 * time.Second
-	leaseNamespace      = "some-lease-namespace"
+	leaseNamespace      = "medik8s-leases"
 )
 
 func getMockNode() *corev1.Node {
@@ -68,7 +68,7 @@ var _ = Describe("Leases", func() {
 				initialLease,
 			}
 			cl := fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
-			manager := NewManager(cl, leaseHolderIdentity, leaseNamespace)
+			manager, _ := NewManager(cl, leaseHolderIdentity)
 			_, err := manager.GetLease(context.TODO(), node)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -561,7 +561,7 @@ func generateExpectedLease(obj client.Object, kind string) *coordv1.Lease {
 func testCreateLease() {
 	node := getMockNode()
 	cl := fake.NewClientBuilder().Build()
-	manager := NewManager(cl, leaseHolderIdentity, leaseNamespace)
+	manager, _ := NewManager(cl, leaseHolderIdentity)
 	_, err := manager.GetLease(context.Background(), node)
 	Expect(err.Error()).To(ContainSubstring("not found"))
 	err = manager.RequestLease(context.Background(), node, leaseDuration)
