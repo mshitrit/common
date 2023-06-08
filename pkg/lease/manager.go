@@ -23,8 +23,8 @@ import (
 
 const (
 	//NSEnvVar is containing the value of the namespace leases will be managed at, in case it's empty defaultLeaseNs will be used
-	NSEnvVar       = "COMMON_MANAGER_LEASES"
-	defaultLeaseNs = "common-manager-leases"
+	NSEnvVar       = "LEASE_NAMESPACE"
+	defaultLeaseNs = "medik8s-leases"
 )
 
 type Manager interface {

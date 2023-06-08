@@ -25,7 +25,7 @@ var NowTime = metav1.NowMicro()
 const (
 	leaseHolderIdentity = "some-operator"
 	leaseDuration       = 3600 * time.Second
-	leaseNamespace      = "common-manager-leases"
+	leaseNamespace      = "medik8s-leases"
 )
 
 func getMockNode() *corev1.Node {
