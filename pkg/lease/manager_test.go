@@ -119,7 +119,7 @@ var _ = Describe("Leases", func() {
 				},
 			},
 			nil,
-			fmt.Errorf("can't update valid lease held by different owner"),
+			&AlreadyHeldError{holderIdentity: "miau"},
 		),
 		Entry("update lease with different holder identity (full init)",
 			&coordv1.Lease{
