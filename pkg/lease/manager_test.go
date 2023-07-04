@@ -119,7 +119,7 @@ var _ = Describe("Leases", func() {
 				},
 			},
 			nil,
-			&AlreadyHeldError{holderIdentity: "miau"},
+			AlreadyHeldError{holderIdentity: "miau"},
 		),
 		Entry("update lease with different holder identity (full init)",
 			&coordv1.Lease{
