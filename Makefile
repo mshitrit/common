@@ -1,7 +1,7 @@
 # GO_VERSION refers to the version of Golang to be downloaded when running dockerized version
 GO_VERSION = 1.20
-GOIMPORTS_VERSION = v0.8.0
-SORT_IMPORTS_VERSION = v0.1.0
+GOIMPORTS_VERSION = v0.11.0
+SORT_IMPORTS_VERSION = v0.2.1
 
 # Run go in a container
 # --rm                                                          = remove container when stopped
@@ -71,7 +71,7 @@ test-imports: sort-imports ## Check for sorted imports
 
 .PHONY: fix-imports
 fix-imports: sort-imports ## Sort imports
-	$(SORT_IMPORTS) . -w
+	$(SORT_IMPORTS) -w .
 
 GOIMPORTS = $(shell pwd)/bin/goimports
 .PHONY: install-goimports
