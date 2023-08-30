@@ -1,7 +1,7 @@
 # GO_VERSION refers to the version of Golang to be downloaded when running dockerized version
 GO_VERSION = 1.20
-GOIMPORTS_VERSION = v0.8.0
-SORT_IMPORTS_VERSION = v0.1.0
+GOIMPORTS_VERSION = v0.11.0
+SORT_IMPORTS_VERSION = v0.2.1
 
 # Run go in a container
 # --rm                                                          = remove container when stopped
@@ -29,17 +29,24 @@ rm -rf $$TMP_DIR ;\
 }
 endef
 
+.PHONY: build
+build: ## Build.
+	go build ./...
+
 .PHONY: test
-test: ## Run tests.
+test: ## Run unit tests.
 	go test ./... -coverprofile cover.out -v
 
-.PHONY: check
-check: fmt vet goimports verify-no-changes ## Dockerized version of make test with additional verifications
-	$(DOCKER_GO) "make test"
+.PHONY: lint
+lint: tidy goimports fix-imports vet verify-no-changes ## Run linters etc.
 
-.PHONY: fmt
-fmt: ## Run go fmt against code.
-	go fmt ./...
+.PHONY: check
+check: ## Dockerized version of make test with additional verifications
+	$(DOCKER_GO) "make lint test"
+
+.PHONY: goimports
+goimports: install-goimports ## Run go fmt against code.
+	$(GOIMPORTS) -w ./pkg
 
 .PHONY: vet
 vet: ## Run go vet against code.
@@ -49,16 +56,9 @@ vet: ## Run go vet against code.
 verify-no-changes: ## verify there are no un-staged changes
 	./hack/verify-diff.sh
 
-.PHONY:vendor
-vendor: ## Runs go mod vendor
-	go mod vendor
-
 .PHONY: tidy
 tidy: ## Runs go mod tidy
 	go mod tidy
-
-.PHONY:verify-vendor
-verify-vendor:tidy vendor verify-no-changes ##Verifies vendor and tidy didn't cause changes
 
 SORT_IMPORTS = $(shell pwd)/bin/sort-imports
 .PHONY: sort-imports
@@ -71,9 +71,9 @@ test-imports: sort-imports ## Check for sorted imports
 
 .PHONY: fix-imports
 fix-imports: sort-imports ## Sort imports
-	$(SORT_IMPORTS) . -w
+	$(SORT_IMPORTS) -w .
 
 GOIMPORTS = $(shell pwd)/bin/goimports
-goimports: ## updates goimports.
+.PHONY: install-goimports
+install-goimports: ## updates goimports.
 	$(call go-install-tool,$(GOIMPORTS),golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION))
-	$(GOIMPORTS) -w ./pkg
