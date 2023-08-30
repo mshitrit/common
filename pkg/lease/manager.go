@@ -227,9 +227,8 @@ func (l *manager) invalidateLease(ctx context.Context, obj client.Object) error 
 		}
 		return err
 	}
-	if l.holderIdentity != *lease.Spec.HolderIdentity {
-		isLeaseExpired := time.Now().After(lease.Spec.RenewTime.Time.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second))
-		if !isLeaseExpired {
+	if lease.Spec.HolderIdentity != nil && l.holderIdentity != *lease.Spec.HolderIdentity {
+		if isValidLease(lease, time.Now()) {
 			return AlreadyHeldError{*lease.Spec.HolderIdentity}
 		}
 	}
