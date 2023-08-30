@@ -81,14 +81,10 @@ var _ = Describe("Leases", func() {
 
 			switch actionOnLease {
 			case requestLease:
-				{
-					err = manager.RequestLease(context.Background(), node, leaseDuration)
-				}
+				err = manager.RequestLease(context.Background(), node, leaseDuration)
 			case invalidateLease:
-				{
-					manager, _ := NewManager(cl, "different-owner")
-					err = manager.InvalidateLease(context.Background(), node)
-				}
+				manager, _ := NewManager(cl, "different-owner")
+				err = manager.InvalidateLease(context.Background(), node)
 			}
 
 			if expectedLease == nil {
