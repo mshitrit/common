@@ -228,9 +228,7 @@ func (l *manager) invalidateLease(ctx context.Context, obj client.Object) error 
 		return err
 	}
 	if lease.Spec.HolderIdentity != nil && l.holderIdentity != *lease.Spec.HolderIdentity {
-		if isValidLease(lease, time.Now()) {
-			return AlreadyHeldError{*lease.Spec.HolderIdentity}
-		}
+		return AlreadyHeldError{*lease.Spec.HolderIdentity}
 	}
 	if err := l.Client.Delete(ctx, lease); err != nil {
 		log.Error(err, "failed to delete lease to be invalidated")
