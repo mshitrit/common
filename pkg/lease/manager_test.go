@@ -28,6 +28,13 @@ const (
 	leaseNamespace      = "medik8s-leases"
 )
 
+type action string
+
+var (
+	requestLease    action = "request lease"
+	invalidateLease action = "invalidate lease"
+)
+
 func getMockNode() *corev1.Node {
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -56,7 +63,7 @@ var _ = Describe("Leases", func() {
 	renewTriggerTime := NowTime
 
 	DescribeTable("Updates",
-		func(initialLease *coordv1.Lease, expectedLease *coordv1.Lease, expectedError error) {
+		func(initialLease *coordv1.Lease, expectedLease *coordv1.Lease, actionOnLease action, expectedError error) {
 			//Test Create lease
 			if initialLease == nil {
 				testCreateLease()
@@ -72,7 +79,13 @@ var _ = Describe("Leases", func() {
 			_, err := manager.GetLease(context.TODO(), node)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = manager.RequestLease(context.Background(), node, leaseDuration)
+			switch actionOnLease {
+			case requestLease:
+				err = manager.RequestLease(context.Background(), node, leaseDuration)
+			case invalidateLease:
+				manager, _ := NewManager(cl, "different-owner")
+				err = manager.InvalidateLease(context.Background(), node)
+			}
 
 			if expectedLease == nil {
 				Expect(err).To(HaveOccurred())
@@ -119,6 +132,7 @@ var _ = Describe("Leases", func() {
 				},
 			},
 			nil,
+			requestLease,
 			AlreadyHeldError{holderIdentity: "miau"},
 		),
 		Entry("update lease with different holder identity (full init)",
@@ -162,6 +176,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		Entry("update expired lease with different holder identity (with transition update)",
@@ -205,6 +220,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(4),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		Entry("extend lease if same holder and zero duration and renew time (invalid lease)",
@@ -248,6 +264,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(4),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		Entry("update lease if same holder and expired lease - check modified lease duration",
@@ -291,6 +308,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		Entry("extend lease if same holder and expired lease (acquire time previously not nil)",
@@ -334,6 +352,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		// TODO why is not setting aquire time and transitions?
@@ -378,6 +397,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     pointer.Int32(1),
 				},
 			},
+			requestLease,
 			nil,
 		),
 		// TODO why not setting aquire time and transitions?
@@ -422,6 +442,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     nil,
 				},
 			},
+			requestLease,
 			nil,
 		),
 		// TODO why not setting aquire time and transitions?
@@ -466,6 +487,7 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     nil,
 				},
 			},
+			requestLease,
 			nil,
 		),
 
@@ -490,7 +512,35 @@ var _ = Describe("Leases", func() {
 					LeaseTransitions:     nil,
 				},
 			},
+			requestLease,
 			nil,
+		),
+
+		Entry("try to delete lease not owned",
+			&coordv1.Lease{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "node-miau",
+					Namespace: leaseNamespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "Node",
+							Name:       "@",
+							UID:        "#",
+						},
+					},
+				},
+				Spec: coordv1.LeaseSpec{
+					HolderIdentity:       pointer.String("miau"),
+					LeaseDurationSeconds: pointer.Int32(44),
+					AcquireTime:          &metav1.MicroTime{Time: time.Now()},
+					RenewTime:            &metav1.MicroTime{Time: time.Now()},
+					LeaseTransitions:     nil,
+				},
+			},
+			nil,
+			invalidateLease,
+			AlreadyHeldError{holderIdentity: "miau"},
 		),
 	)
 })
