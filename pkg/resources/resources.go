@@ -10,7 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DeletePods deletes all the pods from the unhealthy node
+// DeletePods deletes all the pods from the node
 func DeletePods(ctx context.Context, r client.Client, nodeName string) error {
 	log := ctrl.Log.WithName("commons-resource")
 	zero := int64(0)
@@ -41,7 +41,7 @@ func DeletePods(ctx context.Context, r client.Client, nodeName string) error {
 		deleteOptions.Namespace = ns.Name
 		err := r.DeleteAllOf(ctx, pod, deleteOptions)
 		if err != nil {
-			log.Error(err, "failed to delete pods of unhealthy node", "namespace", ns.Name)
+			log.Error(err, "failed to delete pods of node", "namespace", ns.Name)
 			return err
 		}
 	}
