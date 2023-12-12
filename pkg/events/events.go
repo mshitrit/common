@@ -3,6 +3,7 @@ package events
 import (
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 )
@@ -10,26 +11,26 @@ import (
 // Event message format "medik8s <operator shortname> <message>"
 const customFmt = "[remediation] %s"
 
-// NormalEventf will record an event with type Normal and fixed message.
+// NormalEvent will record an event with type Normal and fixed message.
 func NormalEvent(recorder record.EventRecorder, object runtime.Object, reason, message string) {
-	recorder.Event(object, "Normal", reason, fmt.Sprintf("[remediation] %s", message))
+	recorder.Event(object, corev1.EventTypeNormal, reason, fmt.Sprintf(customFmt, message))
 }
 
 // NormalEventf will record an event with type Normal and formatted message.
 func NormalEventf(recorder record.EventRecorder, object runtime.Object, reason, messageFmt string, a ...interface{}) {
 	message := fmt.Sprintf(messageFmt, a...)
-	recorder.Event(object, "Normal", reason, fmt.Sprintf("[remediation] %s", message))
+	recorder.Event(object, corev1.EventTypeNormal, reason, fmt.Sprintf(customFmt, message))
 }
 
-// WarningEventf will record an event with type Warning and fixed message.
+// WarningEvent will record an event with type Warning and fixed message.
 func WarningEvent(recorder record.EventRecorder, object runtime.Object, reason, message string) {
-	recorder.Event(object, "Warning", reason, fmt.Sprintf("[remediation] %s", message))
+	recorder.Event(object, corev1.EventTypeWarning, reason, fmt.Sprintf(customFmt, message))
 }
 
 // WarningEventf will record an event with type Warning and formatted message.
 func WarningEventf(recorder record.EventRecorder, object runtime.Object, reason, messageFmt string, a ...interface{}) {
 	message := fmt.Sprintf(messageFmt, a...)
-	recorder.Event(object, "Warning", reason, fmt.Sprintf("[remediation] %s", message))
+	recorder.Event(object, corev1.EventTypeWarning, reason, fmt.Sprintf(customFmt, message))
 }
 
 // Special case events
