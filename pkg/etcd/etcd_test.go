@@ -24,7 +24,7 @@ var _ = Describe("Check ETCD disruptions", func() {
 	When("ETCD PDB was not set", func() {
 		It("should fail", func() {
 			cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
-			valid, _ := IsEtcdDisruptionAllowed(context.Background(), cl, nil, "remediation")
+			valid, _ := IsControlPlaneNodeReady(context.Background(), cl, nil, "remediation")
 			Expect(valid).To(BeFalse())
 		})
 	})
@@ -63,7 +63,7 @@ var _ = Describe("Check ETCD disruptions", func() {
 			pdb.Status.DisruptionsAllowed = int32(1)
 			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
 			for _, node := range controlPlaneNodes {
-				Expect(IsEtcdDisruptionAllowed(context.Background(), cl, node, "remediation")).To(BeTrue())
+				Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeTrue())
 			}
 
 			// Expect(IsEtcdDisruptionAllowed(context.Background(), cl, &workerNodes[1], "remediation")).To(BeTrue())
@@ -79,9 +79,9 @@ var _ = Describe("Check ETCD disruptions", func() {
 			Expect(cl.Status().Update(context.Background(), podGuard)).To(Succeed())
 			for _, node := range controlPlaneNodes {
 				if node.Name == nodeGuardDown {
-					Expect(IsEtcdDisruptionAllowed(context.Background(), cl, node, "remediation")).To(BeTrue())
+					Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeTrue())
 				} else {
-					Expect(IsEtcdDisruptionAllowed(context.Background(), cl, node, "remediation")).To(BeFalse())
+					Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeFalse())
 				}
 			}
 		})
