@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/zapr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -22,15 +24,17 @@ var _ = Describe("Check etcd disruptions", func() {
 	var (
 		cl client.WithWatch
 	)
+	zapLogger, _ := zap.NewProduction()
+	log := zapr.NewLogger(zapLogger)
 
-	When("etcd PDB was not set", func() {
+	When("etcd PDB doesn't exist", func() {
 		It("should fail", func() {
 			cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
-			valid, _ := CanNodeDisruptEtcd(context.Background(), cl, nil)
+			valid, _ := IsEtcdDisruptionAllowed(context.Background(), cl, log, nil)
 			Expect(valid).To(BeFalse())
 		})
 	})
-	When("etcd PDB was set", func() {
+	When("etcd PDB exists", func() {
 		var (
 			pdb               *policyv1.PodDisruptionBudget
 			controlPlaneNodes []*corev1.Node
@@ -39,7 +43,7 @@ var _ = Describe("Check etcd disruptions", func() {
 
 		BeforeEach(func() {
 			cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
-			pdb = getPDBEtcd()
+			pdb = getEtcdPDB()
 			Expect(cl.Create(context.Background(), pdb)).To(Succeed())
 			pdb.Status.DisruptionsAllowed = int32(1)
 			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
@@ -49,46 +53,63 @@ var _ = Describe("Check etcd disruptions", func() {
 			controlPlaneNodes = newControlPlaneNodes(3)
 			for _, node := range controlPlaneNodes {
 				Expect(cl.Create(context.Background(), node)).To(Succeed())
-				podGuard := getPogGuard(node.Name)
+				podGuard := getPodGuard(node.Name)
 				Expect(cl.Create(context.Background(), podGuard)).To(Succeed())
 			}
 			DeferCleanup(func() {
 				for _, node := range controlPlaneNodes {
-					podGuard := getPogGuard(node.Name)
+					podGuard := getPodGuard(node.Name)
 					Expect(cl.Delete(context.Background(), podGuard)).To(Succeed())
 					Expect(cl.Delete(context.Background(), node)).To(Succeed())
 				}
 			})
 		})
-		It("should allow remediation for healhy cluster", func() {
+
+		It("should allow disruption for any control plane node in healhy cluster", func() {
 			pdb.Status.DisruptionsAllowed = int32(1)
 			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
 			for _, node := range controlPlaneNodes {
-				Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeTrue())
+				Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, node)).To(BeTrue())
 			}
 		})
-		It("should allow remediation for one unhealthy control plane that is not violating quorum and reject others", func() {
+
+		It("should allow disruption for a control plane node without guard pod", func() {
+			By("Allowed Disruption is one")
+			// create new node without guard pod
+			unguardedNode := newControlPlaneNodes(1)[0]
+			unguardedNode.Name = "no-guard-node"
+			Expect(cl.Create(context.Background(), unguardedNode)).To(Succeed())
+			DeferCleanup(cl.Delete, context.Background(), unguardedNode)
+			Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, unguardedNode)).To(BeTrue())
+
+			By("Allowed Disruption is zero")
+			pdb.Status.DisruptionsAllowed = int32(0)
+			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
+			Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, unguardedNode)).To(BeTrue())
+		})
+
+		It("should allow disruption for one unhealthy control plane that is not violating quorum and reject others", func() {
 			nodeGuardDown = controlPlaneNodes[2].Name
 			pdb.Status.DisruptionsAllowed = int32(0)
 			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
-			dummyPodGuard := getPogGuard(nodeGuardDown)
+			dummyPodGuard := getPodGuard(nodeGuardDown)
 			podGuard := &corev1.Pod{}
 			Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(dummyPodGuard), podGuard)).To(Succeed())
 			podGuard.Status.Conditions[0].Status = corev1.ConditionFalse
 			Expect(cl.Status().Update(context.Background(), podGuard)).To(Succeed())
 			for _, node := range controlPlaneNodes {
 				if node.Name == nodeGuardDown {
-					Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeTrue())
+					Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, node)).To(BeTrue())
 				} else {
-					Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeFalse())
+					Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, node)).To(BeFalse())
 				}
 			}
 		})
 	})
 })
 
-// getPogGuard returns gurad pod with expected label and Ready condition is True for a given nodeName
-func getPogGuard(nodeName string) *corev1.Pod {
+// getPodGuard returns gurad pod with expected label and Ready condition is True for a given nodeName
+func getPodGuard(nodeName string) *corev1.Pod {
 	dummyContainer := corev1.Container{
 		Name:  "container- name",
 		Image: "foo",
@@ -117,8 +138,8 @@ func getPogGuard(nodeName string) *corev1.Pod {
 	}
 }
 
-// getPDBEtcd returns PodDisruptionBudget object at etcd namespace with a matching guard pod selector
-func getPDBEtcd() *policyv1.PodDisruptionBudget {
+// getEtcdPDB returns PodDisruptionBudget object at etcd namespace with a matching guard pod selector
+func getEtcdPDB() *policyv1.PodDisruptionBudget {
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{Kind: "PodDisruptionBudget"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -135,14 +156,14 @@ func getPDBEtcd() *policyv1.PodDisruptionBudget {
 
 func newControlPlaneNodes(nodesCount int) []*corev1.Node {
 	nodes := make([]*corev1.Node, 0, nodesCount)
-	for i := nodesCount; i > 0; i-- {
-		node := newNode(fmt.Sprintf("control-plane-node-%d", i), corev1.NodeReady, corev1.ConditionUnknown)
+	for i := 0; i < nodesCount; i++ {
+		node := newNode(fmt.Sprintf("control-plane-node-%d", i))
 		nodes = append(nodes, node)
 	}
 	return nodes
 }
 
-func newNode(name string, t corev1.NodeConditionType, s corev1.ConditionStatus) *corev1.Node {
+func newNode(name string) *corev1.Node {
 	labels := make(map[string]string, 1)
 	labels[commonLabels.ControlPlaneRole] = ""
 	return &corev1.Node{
@@ -150,14 +171,6 @@ func newNode(name string, t corev1.NodeConditionType, s corev1.ConditionStatus) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels,
-		},
-		Status: corev1.NodeStatus{
-			Conditions: []corev1.NodeCondition{
-				{
-					Type:   t,
-					Status: s,
-				},
-			},
 		},
 	}
 }
