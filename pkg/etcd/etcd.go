@@ -11,6 +11,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// Important: add the following two lines in your project/code, so your RBAC will be updated with the right permissions
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+
 const (
 	etcdNamespace = "openshift-etcd"
 	errNoEtcdChec = "can't check if etcd quorum will be violated!"
