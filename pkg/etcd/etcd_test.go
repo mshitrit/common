@@ -16,24 +16,25 @@ import (
 	commonLabels "github.com/medik8s/common/pkg/labels"
 )
 
-var _ = Describe("Check ETCD disruptions", func() {
+var guardLabel = map[string]string{"app": "guard"}
+
+var _ = Describe("Check etcd disruptions", func() {
 	var (
 		cl client.WithWatch
 	)
 
-	When("ETCD PDB was not set", func() {
+	When("etcd PDB was not set", func() {
 		It("should fail", func() {
 			cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
-			valid, _ := IsControlPlaneNodeReady(context.Background(), cl, nil, "remediation")
+			valid, _ := CanNodeDisruptEtcd(context.Background(), cl, nil)
 			Expect(valid).To(BeFalse())
 		})
 	})
-	When("ETCD PDB was set", func() {
+	When("etcd PDB was set", func() {
 		var (
 			pdb               *policyv1.PodDisruptionBudget
 			controlPlaneNodes []*corev1.Node
 			nodeGuardDown     string
-			// controlPlaneNodes, workerNodes [] corev1.Node
 		)
 
 		BeforeEach(func() {
@@ -63,10 +64,8 @@ var _ = Describe("Check ETCD disruptions", func() {
 			pdb.Status.DisruptionsAllowed = int32(1)
 			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
 			for _, node := range controlPlaneNodes {
-				Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeTrue())
+				Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeTrue())
 			}
-
-			// Expect(IsEtcdDisruptionAllowed(context.Background(), cl, &workerNodes[1], "remediation")).To(BeTrue())
 		})
 		It("should allow remediation for one unhealthy control plane that is not violating quorum and reject others", func() {
 			nodeGuardDown = controlPlaneNodes[2].Name
@@ -79,15 +78,16 @@ var _ = Describe("Check ETCD disruptions", func() {
 			Expect(cl.Status().Update(context.Background(), podGuard)).To(Succeed())
 			for _, node := range controlPlaneNodes {
 				if node.Name == nodeGuardDown {
-					Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeTrue())
+					Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeTrue())
 				} else {
-					Expect(IsControlPlaneNodeReady(context.Background(), cl, node, "remediation")).To(BeFalse())
+					Expect(CanNodeDisruptEtcd(context.Background(), cl, node)).To(BeFalse())
 				}
 			}
 		})
 	})
 })
 
+// getPogGuard returns gurad pod with expected label and Ready condition is True for a given nodeName
 func getPogGuard(nodeName string) *corev1.Pod {
 	dummyContainer := corev1.Container{
 		Name:  "container- name",
@@ -98,9 +98,7 @@ func getPogGuard(nodeName string) *corev1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "guard-" + nodeName,
 			Namespace: etcdNamespace,
-			Labels: map[string]string{
-				"app": "guard",
-			},
+			Labels:    guardLabel,
 		},
 		Spec: corev1.PodSpec{
 			NodeName: nodeName,
@@ -119,6 +117,7 @@ func getPogGuard(nodeName string) *corev1.Pod {
 	}
 }
 
+// getPDBEtcd returns PodDisruptionBudget object at etcd namespace with a matching guard pod selector
 func getPDBEtcd() *policyv1.PodDisruptionBudget {
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{Kind: "PodDisruptionBudget"},
@@ -128,9 +127,7 @@ func getPDBEtcd() *policyv1.PodDisruptionBudget {
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "guard",
-				},
+				MatchLabels: guardLabel,
 			},
 		},
 	}

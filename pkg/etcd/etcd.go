@@ -11,49 +11,43 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const etcdNamespace = "openshift-etcd"
+const (
+	etcdNamespace = "openshift-etcd"
+	errNoEtcdChec = "can't check if etcd quorum will be violated!"
+)
 
 var log = logf.Log.WithName("etcd-pdb-checker")
 
-// isEtcdDisruptionAllowed checks if etcd disruption is allowed and refuse the todoAction (remediation/manitenance) when it isn't allowed
-func isEtcdDisruptionAllowed(ctx context.Context, cl client.Client, todoAction string) (bool, *policyv1.PodDisruptionBudget, error) {
+// CanNodeDisruptEtcd checks if a node can disrupt etcd quorum, and it returns error when it fails in the process
+func CanNodeDisruptEtcd(ctx context.Context, cl client.Client, node *corev1.Node) (bool, error) {
+	// Check if etcd is already disrupted, and if new disruption is allowed
 	pdbList := &policyv1.PodDisruptionBudgetList{}
 	if err := cl.List(ctx, pdbList, &client.ListOptions{Namespace: etcdNamespace}); err != nil {
-		return false, nil, err
+		return false, err
 	}
 	if len(pdbList.Items) == 0 {
-		log.Info("No PDB found, can't check if etcd quorum will be violated! Refusing "+todoAction+"!", "namespace", etcdNamespace)
-		return false, nil, nil
+		log.Info("No PDB were found, "+errNoEtcdChec, "namespace", etcdNamespace)
+		return false, nil
 	}
 	if len(pdbList.Items) > 1 {
-		log.Info("More than one PDB found, can't check if etcd quorum will be violated! Refusing "+todoAction+"!", "namespace", etcdNamespace)
-		return false, nil, nil
+		log.Info("More than one PDB found, "+errNoEtcdChec, "namespace", etcdNamespace)
+		return false, nil
 	}
 	pdb := pdbList.Items[0]
 	if pdb.Status.DisruptionsAllowed >= 1 {
-		return true, &pdb, nil
-	}
-	return false, &pdb, nil
-}
-
-// IsControlPlaneNodeReady checks if etcd disruption is allowed and accpet/refuse the todoAction (remediation/manitenance)
-func IsControlPlaneNodeReady(ctx context.Context, cl client.Client, node *corev1.Node, todoAction string) (bool, error) {
-	allowedDisruption, pdb, err := isEtcdDisruptionAllowed(ctx, cl, todoAction)
-	if pdb == nil {
-		return false, err
-	}
-	if allowedDisruption {
-		log.Info("Etcd disruption is allowed, so "+todoAction+" is allowed", "Node", node.Name)
+		log.Info("Node disruption is allowed, since etcd disruption is allowed", "Node", node.Name)
 		return true, nil
 	}
-	log.Info("ETCD PDB was found but etcd disruption isn't allowed - DisruptionsAllowed = 0", "Node", node.Name)
 
-	// No disruptions allowed, so the only case we should remediate is that the node in question is already one of the disrupted ones
+	log.Info("etcd PDB was found, but etcd disruption isn't allowed", "Node", node.Name, "etcd allowed disruptions", pdb.Status.DisruptionsAllowed)
+
+	// No etcd disruptions are allowed, but we still need to check if the given node will violate etcd quorum
+	// If it is disrupted, then it doesn't violate etcd quorum. Otherwise, it would violate etcd quorum
 	// The PDB doesn't disclose which node is disrupted
 	// So we have to check the etcd guard pods
 	selector, err := metav1.LabelSelectorAsMap(pdb.Spec.Selector)
 	if err != nil {
-		log.Info("Could not parse PDB selector, can't check if etcd quorum will be violated! Refusing "+todoAction+"!", "selector", pdb.Spec.Selector.String())
+		log.Info("Could not parse PDB selector, "+errNoEtcdChec, "selector", pdb.Spec.Selector.String())
 		return false, err
 	}
 	podList := &corev1.PodList{}
@@ -67,15 +61,15 @@ func IsControlPlaneNodeReady(ctx context.Context, cl client.Client, node *corev1
 		if pod.Spec.NodeName == node.Name {
 			for _, condition := range pod.Status.Conditions {
 				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionFalse {
-					log.Info("Node is disrupted, so "+todoAction+" is allowed", "Node", node.Name, "Guard pod", pod.Name)
+					log.Info("Node is disrupted, so it won't violate etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
 					return true, nil
 				}
 			}
-			log.Info("Node is not disrupted, so "+todoAction+" is not allowed", "Node", node.Name, "Guard pod", pod.Name)
+			log.Info("Node is not disrupted, but it will violate etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
 			return false, nil
 		}
 	}
 
-	log.Info("Node is not disrupted, so "+todoAction+" is not allowed", "Node", node.Name)
+	log.Info("Node is not disrupted, but it will violate etcd quorum", "Node", node.Name)
 	return false, nil
 }
