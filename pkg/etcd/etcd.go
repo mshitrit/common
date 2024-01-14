@@ -23,6 +23,7 @@ const (
 )
 
 // IsEtcdDisruptionAllowed checks if etcd disruption is allowed fot a given node
+// It looks at the PodDisruptionBudget (PDB) of etcd quorum, and (if needed) search for the node's guard pod
 func IsEtcdDisruptionAllowed(ctx context.Context, cl client.Client, log logr.Logger, node *corev1.Node) (bool, error) {
 	// Check if new disruption is allowed
 	pdbList := &policyv1.PodDisruptionBudgetList{}
@@ -39,14 +40,14 @@ func IsEtcdDisruptionAllowed(ctx context.Context, cl client.Client, log logr.Log
 	}
 	pdb := pdbList.Items[0]
 	if pdb.Status.DisruptionsAllowed >= 1 {
-		log.Info("etcd disruption is allowed, thus mode disruption is allowed, ", "Node", node.Name)
+		log.Info("etcd disruption is allowed, thus node disruption is allowed", "Node", node.Name)
 		return true, nil
 	}
 
-	log.Info("etcd PDB was found, but etcd disruption isn't allowed", "Node", node.Name, "etcd allowed disruptions", pdb.Status.DisruptionsAllowed)
+	log.Info("etcd PDB was found, but etcd disruption isn't allowed. Checking if node disruption will violate the etcd quorum", "Node", node.Name, "PDB", pdb.Name, "etcd allowed disruptions", pdb.Status.DisruptionsAllowed)
 
-	// No etcd disruptions are allowed, but we still need to check if the given node will violate etcd quorum
-	// If it is disrupted, then it doesn't violate etcd quorum. Otherwise, it would violate etcd quorum
+	// No etcd disruptions are allowed, but we still need to check if the given node will violate the etcd quorum
+	// If it is already disrupted, then disrupting it again won't violate the etcd quorum. Otherwise, it would violate the etcd quorum
 	// The PDB doesn't disclose which node is disrupted
 	// So we have to check the etcd guard pods
 	selector, err := metav1.LabelSelectorAsMap(pdb.Spec.Selector)
@@ -65,15 +66,15 @@ func IsEtcdDisruptionAllowed(ctx context.Context, cl client.Client, log logr.Log
 		if pod.Spec.NodeName == node.Name {
 			for _, condition := range pod.Status.Conditions {
 				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionFalse {
-					log.Info("Node is disrupted, thus it won't violate the etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
+					log.Info("Node is already disrupted, thus disrupting it (again) won't violate the etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
 					return true, nil
 				}
 			}
-			log.Info("Node is not disrupted, and it will violate the etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
+			log.Info("Node is not disrupted, and disrupting it will violate the etcd quorum", "Node", node.Name, "Guard pod", pod.Name)
 			return false, nil
 		}
 	}
-
-	log.Info("No guard pod was found, thus the node is either already disrupted or it wasn't configured with etcd, thus it won't violate the etcd quorum", "Node", node.Name)
+	// Node is either already disrupted (and guard pod is missing) or it wasn't configured with etcd (to have a guard pod)
+	log.Info("No guard pod was found for the node, and disrupting the node won't violate the etcd quorum,", "Node", node.Name)
 	return true, nil
 }
