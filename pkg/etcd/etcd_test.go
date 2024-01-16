@@ -6,14 +6,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.uber.org/zap/zapcore"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	zaplog "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	commonLabels "github.com/medik8s/common/pkg/labels"
 )
@@ -25,11 +24,7 @@ const (
 var guardLabel = map[string]string{"app": "guard"}
 
 var _ = Describe("Check if etcd disruption is allowed", func() {
-	opts := zaplog.Options{
-		Development: true,
-		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
-	}
-	log := zaplog.New(zaplog.WriteTo(GinkgoWriter), zaplog.UseFlagOptions(&opts))
+	log := ctrl.Log.WithName("etcd-unit-test")
 	fakeClient := fake.NewClientBuilder().WithRuntimeObjects().Build()
 
 	BeforeEach(func() {
