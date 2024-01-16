@@ -30,7 +30,7 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 	log := zaplog.New(zaplog.WriteTo(GinkgoWriter), zaplog.UseFlagOptions(&opts))
-	cl := fake.NewClientBuilder().WithRuntimeObjects().Build()
+	fakeClient := fake.NewClientBuilder().WithRuntimeObjects().Build()
 
 	BeforeEach(func() {
 		// create etcd ns on 1st run
@@ -40,16 +40,16 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 			},
 		}
 
-		if err := cl.Get(context.Background(), client.ObjectKeyFromObject(etcdNs), &corev1.Namespace{}); err != nil {
-			Expect(cl.Create(context.Background(), etcdNs)).To(Succeed())
+		if err := fakeClient.Get(context.Background(), client.ObjectKeyFromObject(etcdNs), &corev1.Namespace{}); err != nil {
+			Expect(fakeClient.Create(context.Background(), etcdNs)).To(Succeed())
 		}
 	})
 
 	Context("without etcd quorum guard PDB", func() {
 		When("etcd quorum cannot be verified", func() {
 			It("should fail", func() {
-				cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
-				valid, _ := IsEtcdDisruptionAllowed(context.Background(), cl, log, nil)
+				fakeClient = fake.NewClientBuilder().WithRuntimeObjects().Build()
+				valid, _ := IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, nil)
 				Expect(valid).To(BeFalse())
 			})
 		})
@@ -62,28 +62,28 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 		)
 
 		BeforeEach(func() {
-			cl = fake.NewClientBuilder().WithRuntimeObjects().Build()
+			fakeClient = fake.NewClientBuilder().WithRuntimeObjects().Build()
 			pdb = getEtcdPDB()
-			Expect(cl.Create(context.Background(), pdb)).To(Succeed())
+			Expect(fakeClient.Create(context.Background(), pdb)).To(Succeed())
 			pdb.Status.DisruptionsAllowed = int32(1)
-			Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
-			DeferCleanup(cl.Delete, context.Background(), pdb)
+			Expect(fakeClient.Status().Update(context.Background(), pdb)).To(Succeed())
+			DeferCleanup(fakeClient.Delete, context.Background(), pdb)
 			unguardedNode = newControlPlaneNodes(1)[0]
 			unguardedNode.Name = "no-guard-node"
 		})
 		JustBeforeEach(func() {
 			controlPlaneNodes = newControlPlaneNodes(3)
 			for _, node := range controlPlaneNodes {
-				Expect(cl.Create(context.Background(), node)).To(Succeed())
+				Expect(fakeClient.Create(context.Background(), node)).To(Succeed())
 				podGuard := getPodGuard(node.Name)
-				Expect(cl.Create(context.Background(), podGuard)).To(Succeed())
+				Expect(fakeClient.Create(context.Background(), podGuard)).To(Succeed())
 			}
 			nodeGuardDown = controlPlaneNodes[1]
 			DeferCleanup(func() {
 				for _, node := range controlPlaneNodes {
 					podGuard := getPodGuard(node.Name)
-					Expect(cl.Delete(context.Background(), podGuard)).To(Succeed())
-					Expect(cl.Delete(context.Background(), node)).To(Succeed())
+					Expect(fakeClient.Delete(context.Background(), podGuard)).To(Succeed())
+					Expect(fakeClient.Delete(context.Background(), node)).To(Succeed())
 				}
 			})
 		})
@@ -91,38 +91,38 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 		When("etcd PDB allowed disruptions is one", func() {
 			BeforeEach(func() {
 				pdb.Status.DisruptionsAllowed = int32(1)
-				Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
+				Expect(fakeClient.Status().Update(context.Background(), pdb)).To(Succeed())
 			})
 			It("should allow disruption for any control plane node with a guard pod", func() {
 				for _, node := range controlPlaneNodes {
-					Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, node)).To(BeTrue())
+					Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, node)).To(BeTrue())
 				}
 			})
 			It("should allow disruption for a control plane node without a guard pod", func() {
-				Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, unguardedNode)).To(BeTrue())
+				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, unguardedNode)).To(BeTrue())
 			})
 		})
 		When("etcd PDB allowed disruptions is zero", func() {
 			BeforeEach(func() {
 				pdb.Status.DisruptionsAllowed = int32(0)
-				Expect(cl.Status().Update(context.Background(), pdb)).To(Succeed())
+				Expect(fakeClient.Status().Update(context.Background(), pdb)).To(Succeed())
 			})
 			It("should allow disruption for a control plane node without a guard pod", func() {
-				Expect(cl.Create(context.Background(), unguardedNode)).To(Succeed())
-				DeferCleanup(cl.Delete, context.Background(), unguardedNode)
-				Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, unguardedNode)).To(BeTrue())
+				Expect(fakeClient.Create(context.Background(), unguardedNode)).To(Succeed())
+				DeferCleanup(fakeClient.Delete, context.Background(), unguardedNode)
+				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, unguardedNode)).To(BeTrue())
 			})
 			It("should allow disruption for already disrupted control plane node", func() {
 				podGuard := &corev1.Pod{}
-				Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(getPodGuard(nodeGuardDown.Name)), podGuard)).To(Succeed())
+				Expect(fakeClient.Get(context.Background(), client.ObjectKeyFromObject(getPodGuard(nodeGuardDown.Name)), podGuard)).To(Succeed())
 				podGuard.Status.Conditions[0].Status = corev1.ConditionFalse
-				Expect(cl.Status().Update(context.Background(), podGuard)).To(Succeed())
-				Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, nodeGuardDown)).To(BeTrue())
+				Expect(fakeClient.Status().Update(context.Background(), podGuard)).To(Succeed())
+				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, nodeGuardDown)).To(BeTrue())
 			})
 			It("should reject disruptions for any non-disrupted control plane node", func() {
 				for _, node := range controlPlaneNodes {
 					if node.Name != nodeGuardDown.Name {
-						Expect(IsEtcdDisruptionAllowed(context.Background(), cl, log, node)).To(BeFalse())
+						Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, node)).To(BeFalse())
 					}
 				}
 			})
@@ -130,7 +130,7 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 	})
 })
 
-// getPodGuard returns gurad pod with expected label and Ready condition is True for a given nodeName
+// getPodGuard returns guard pod with expected label and Ready condition is True for a given nodeName
 func getPodGuard(nodeName string) *corev1.Pod {
 	dummyContainer := corev1.Container{
 		Name:  "container-name",
