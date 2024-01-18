@@ -17,6 +17,28 @@ var _ = Describe("Emit custom formatted Event", func() {
 		r = record.NewFakeRecorder(4)
 	})
 
+	Context("Emit special events", func() {
+		When("Remediation starts", func() {
+			It("should see special RemediationStarted event", func() {
+				RemediationStarted(r, nil)
+				verifyEvent(r, "Normal RemediationStarted [remediation] Remediation started")
+			})
+		})
+
+		When("Remediation is stopped by NHC", func() {
+			It("should see special RemediationStoppedByNHC event", func() {
+				RemediationStoppedByNHC(r, nil)
+				verifyEvent(r, "Normal RemediationStopped [remediation] NHC added the timed-out annotation, remediation will be stopped")
+			})
+		})
+
+		When("Remediation is finished", func() {
+			It("should see special RemediationFinished event", func() {
+				RemediationFinished(r, nil)
+				verifyEvent(r, "Normal RemediationFinished [remediation] Remediation finished")
+			})
+		})
+	})
 	Context("Emit event via custom API", func() {
 		DescribeTable("Custom APIs",
 			func(obj runtime.Object, eventType string, eventReason string, message string, expected string, args ...interface{}) {
@@ -33,17 +55,7 @@ var _ = Describe("Emit custom formatted Event", func() {
 						WarningEvent(r, obj, eventReason, message)
 					}
 				}
-				for {
-					select {
-					case got := <-r.Events:
-						Expect(got).To(Equal(expected))
-						break
-					case <-time.After(1 * time.Second):
-						Fail("Timeout waiting for event")
-					}
-					break
-
-				}
+				verifyEvent(r, expected)
 			},
 			Entry("Emit normal event",
 				nil,
@@ -66,3 +78,17 @@ var _ = Describe("Emit custom formatted Event", func() {
 		)
 	})
 })
+
+func verifyEvent(r *record.FakeRecorder, expected string) {
+	for {
+		select {
+		case got := <-r.Events:
+			Expect(got).To(Equal(expected))
+			break
+		case <-time.After(1 * time.Second):
+			Fail("Timeout waiting for event")
+		}
+		break
+
+	}
+}
