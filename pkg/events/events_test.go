@@ -25,6 +25,13 @@ var _ = Describe("Emit custom formatted Event", func() {
 			})
 		})
 
+		When("Remediation could not get target Node", func() {
+			It("should see special GetTargetNodeFailed event", func() {
+				GetTargetNodeFailed(r, nil)
+				verifyEvent(r, "Warning RemediationCannotStart [remediation] Could not get remediation target Node")
+			})
+		})
+
 		When("Remediation is stopped by NHC", func() {
 			It("should see special RemediationStoppedByNHC event", func() {
 				RemediationStoppedByNHC(r, nil)

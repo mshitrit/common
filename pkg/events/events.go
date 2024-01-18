@@ -49,3 +49,8 @@ func RemediationStoppedByNHC(recorder record.EventRecorder, object runtime.Objec
 func RemediationFinished(recorder record.EventRecorder, object runtime.Object) {
 	NormalEvent(recorder, object, "RemediationFinished", "Remediation finished")
 }
+
+// GetTargetNodeFailed will record a Warning event with reason RemediationFailed and message "Could not get remediation target node".
+func GetTargetNodeFailed(recorder record.EventRecorder, object runtime.Object) {
+	WarningEvent(recorder, object, "RemediationCannotStart", "Could not get remediation target Node")
+}
