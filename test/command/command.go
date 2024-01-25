@@ -21,16 +21,16 @@ import (
 )
 
 // RunCommandInCluster runs a command in a pod in the cluster and returns the output
-func RunCommandInCluster(c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger) (string, error) {
+func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger) (string, error) {
 
 	// create a pod and wait that it's running
 	pod := getPod(nodeName)
-	pod, err := c.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{})
+	pod, err := c.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return "", err
 	}
 
-	err = waitForCondition(c, pod, corev1.PodReady, corev1.ConditionTrue, time.Minute)
+	err = waitForCondition(ctx, c, pod, corev1.PodReady, corev1.ConditionTrue, time.Minute)
 	if err != nil {
 		log.Error(err, "helper pod isn't ready")
 		return "", err
@@ -38,17 +38,17 @@ func RunCommandInCluster(c *kubernetes.Clientset, nodeName string, ns string, co
 
 	log.Info("helper pod is running, going to execute command")
 	cmd := []string{"sh", "-c", command}
-	bytes, err := waitForPodOutput(c, pod, cmd)
+	bytes, err := waitForPodOutput(ctx, c, pod, cmd)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(bytes)), nil
 }
 
-func waitForPodOutput(c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
+func waitForPodOutput(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
 	var out []byte
 	if err := wait.PollImmediate(1*time.Second, time.Minute, func() (done bool, err error) {
-		out, err = execCommandOnPod(c, pod, command)
+		out, err = execCommandOnPod(ctx, c, pod, command)
 		if err != nil {
 			return false, err
 		}
@@ -62,7 +62,7 @@ func waitForPodOutput(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 }
 
 // execCommandOnPod runs command in the pod and returns buffer output
-func execCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
+func execCommandOnPod(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
 	var outputBuf bytes.Buffer
 	var errorBuf bytes.Buffer
 
@@ -91,7 +91,7 @@ func execCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 		return nil, err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  os.Stdin,
 		Stdout: &outputBuf,
 		Stderr: &errorBuf,
@@ -109,9 +109,9 @@ func execCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 }
 
 // waitForCondition waits until the pod will have specified condition type with the expected status
-func waitForCondition(c *kubernetes.Clientset, pod *corev1.Pod, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) error {
+func waitForCondition(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) error {
 	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		updatedPod, err := c.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		updatedPod, err := c.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
