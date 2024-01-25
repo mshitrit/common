@@ -23,3 +23,9 @@ bin
 *.swo
 *~
 /testbin/
+
+# we never want vendor
+/vendor/
+
+# personal env files
+.envrc
