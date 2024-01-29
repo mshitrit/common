@@ -20,11 +20,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
-// RunCommandInCluster runs a command in a pod in the cluster and returns the output
-func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger) (string, error) {
+// RunOptions allows additional options
+type RunOptions struct {
+	IsOutputExpected bool
+	ExecutePod       *corev1.Pod
+}
 
+// RunCommandInCluster runs a command in a pod in the cluster and returns the output
+func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger, opts ...*RunOptions) (string, error) {
+	options := getRunOptions(nodeName, opts)
+
+	pod := options.ExecutePod
 	// create a pod and wait that it's running
-	pod := getPod(nodeName)
 	pod, err := c.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return "", err
@@ -38,11 +45,35 @@ func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName 
 
 	log.Info("helper pod is running, going to execute command")
 	cmd := []string{"sh", "-c", command}
-	bytes, err := waitForPodOutput(ctx, c, pod, cmd)
+	var bytesResult []byte
+	if options.IsOutputExpected {
+		bytesResult, err = waitForPodOutput(ctx, c, pod, cmd)
+	} else {
+		bytesResult, err = execCommandOnPod(ctx, c, pod, cmd)
+	}
+
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(bytes)), nil
+	return strings.TrimSpace(string(bytesResult)), nil
+}
+
+func getRunOptions(nodeName string, opts []*RunOptions) *RunOptions {
+	defaultOptions := &RunOptions{
+		IsOutputExpected: true,
+		ExecutePod:       getPod(nodeName),
+	}
+	options := defaultOptions
+
+	if len(opts) > 0 && opts[0] != nil {
+		userOptions := opts[0]
+		if userOptions.ExecutePod == nil {
+			userOptions.ExecutePod = defaultOptions.ExecutePod
+		}
+		options = userOptions
+
+	}
+	return options
 }
 
 func waitForPodOutput(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
