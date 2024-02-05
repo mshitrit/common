@@ -21,10 +21,14 @@ import (
 )
 
 // RunCommandInCluster runs a command in a pod in the cluster and returns the output
-func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger) (string, error) {
+func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName string, ns string, command string, log logr.Logger, opts ...RunOption) (string, error) {
+	optionsMap := convertToMap(opts)
 
-	// create a pod and wait that it's running
 	pod := getPod(nodeName)
+	if customizedPod, ok := optionsMap[useCustomizedPod]; ok {
+		pod = customizedPod.(*corev1.Pod)
+	}
+	// create a pod and wait that it's running
 	pod, err := c.CoreV1().Pods(ns).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return "", err
@@ -38,11 +42,17 @@ func RunCommandInCluster(ctx context.Context, c *kubernetes.Clientset, nodeName 
 
 	log.Info("helper pod is running, going to execute command")
 	cmd := []string{"sh", "-c", command}
-	bytes, err := waitForPodOutput(ctx, c, pod, cmd)
+	var bytesResult []byte
+	if _, ok := optionsMap[noOutputExpected]; ok {
+		bytesResult, err = execCommandOnPod(ctx, c, pod, cmd)
+	} else {
+		bytesResult, err = waitForPodOutput(ctx, c, pod, cmd)
+	}
+
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(bytes)), nil
+	return strings.TrimSpace(string(bytesResult)), nil
 }
 
 func waitForPodOutput(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
