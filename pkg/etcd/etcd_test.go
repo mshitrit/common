@@ -107,10 +107,17 @@ var _ = Describe("Check if etcd disruption is allowed", func() {
 				DeferCleanup(fakeClient.Delete, context.Background(), unguardedNode)
 				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, unguardedNode)).To(BeTrue())
 			})
-			It("should allow disruption for already disrupted control plane node", func() {
+			It("should allow disruption for already disrupted control plane node (guard pod ready condition = false)", func() {
 				podGuard := &corev1.Pod{}
 				Expect(fakeClient.Get(context.Background(), client.ObjectKeyFromObject(getPodGuard(nodeGuardDown.Name)), podGuard)).To(Succeed())
 				podGuard.Status.Conditions[0].Status = corev1.ConditionFalse
+				Expect(fakeClient.Status().Update(context.Background(), podGuard)).To(Succeed())
+				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, nodeGuardDown)).To(BeTrue())
+			})
+			It("should allow disruption for already disrupted control plane node (guard pod ready condition missing)", func() {
+				podGuard := &corev1.Pod{}
+				Expect(fakeClient.Get(context.Background(), client.ObjectKeyFromObject(getPodGuard(nodeGuardDown.Name)), podGuard)).To(Succeed())
+				podGuard.Status.Conditions = []corev1.PodCondition{}
 				Expect(fakeClient.Status().Update(context.Background(), podGuard)).To(Succeed())
 				Expect(IsEtcdDisruptionAllowed(context.Background(), fakeClient, log, nodeGuardDown)).To(BeTrue())
 			})
