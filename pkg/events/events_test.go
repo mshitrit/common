@@ -32,6 +32,13 @@ var _ = Describe("Emit custom formatted Event", func() {
 			})
 		})
 
+		When("Remediation could not start", func() {
+			It("should see special RemediationCannotStart event with custom reason", func() {
+				RemediationCannotStart(r, nil, "custom event message")
+				verifyEvent(r, "Warning RemediationCannotStart [remediation] custom event message")
+			})
+		})
+
 		When("Remediation is stopped by NHC", func() {
 			It("should see special RemediationStoppedByNHC event", func() {
 				RemediationStoppedByNHC(r, nil)
