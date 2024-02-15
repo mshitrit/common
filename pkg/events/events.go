@@ -22,7 +22,7 @@ const (
 	remediationCannotStartTargetNodeFailedEventMessage = "Could not get remediation target Node"
 )
 
-// NormalEvent will record an event with type Normal and fixed message.
+// NormalEvent will record an event with type Normal and custom message.
 func NormalEvent(recorder record.EventRecorder, object runtime.Object, reason, message string) {
 	recorder.Event(object, corev1.EventTypeNormal, reason, fmt.Sprintf(customFmt, message))
 }
@@ -33,7 +33,7 @@ func NormalEventf(recorder record.EventRecorder, object runtime.Object, reason, 
 	recorder.Event(object, corev1.EventTypeNormal, reason, fmt.Sprintf(customFmt, message))
 }
 
-// WarningEvent will record an event with type Warning and fixed message.
+// WarningEvent will record an event with type Warning and custom message.
 func WarningEvent(recorder record.EventRecorder, object runtime.Object, reason, message string) {
 	recorder.Event(object, corev1.EventTypeWarning, reason, fmt.Sprintf(customFmt, message))
 }
@@ -46,27 +46,29 @@ func WarningEventf(recorder record.EventRecorder, object runtime.Object, reason,
 
 // Special case events
 
-// RemediationStarted will record a Normal event with reason RemediationStarted and message "Remediation started".
+// RemediationStarted will record a Normal event to signal that the remediation has started.
 func RemediationStarted(recorder record.EventRecorder, object runtime.Object) {
 	NormalEvent(recorder, object, RemediationStartedEventReason, remediationStartedEventMessage)
 }
 
-// RemediationStoppedByNHC will record a Normal event with reason RemediationStopped and message "NHC added the timed-out annotation, remediation will be stopped".
+// RemediationStoppedByNHC will record a Normal event to signal that the remediation was stopped by the Node Healthcheck operator.
 func RemediationStoppedByNHC(recorder record.EventRecorder, object runtime.Object) {
 	NormalEvent(recorder, object, RemediationStoppedEventReason, remediationStoppedEventMessage)
 }
 
-// RemediationFinished will record a Normal event with reason RemediationFinished and message "Remediation finished".
+// RemediationFinished will record a Normal event to signal that the remediation has finished.
 func RemediationFinished(recorder record.EventRecorder, object runtime.Object) {
 	NormalEvent(recorder, object, RemediationFinishedEventReason, remediationFinishedEventMessage)
 }
 
-// RemediationCannotStart will record a Warning event with reason RemediationCannotStart and custom message.
+// RemediationCannotStart will record a Warning event to signal that the remediation cannot start. A custom message can
+// be used to further explain the reason.
 func RemediationCannotStart(recorder record.EventRecorder, object runtime.Object, message string) {
 	WarningEvent(recorder, object, RemediationCannotStartEventReason, message)
 }
 
-// GetTargetNodeFailed will record a Warning event with reason RemediationFailed and message "Could not get remediation target node".
+// GetTargetNodeFailed will record a Warning event to signal that the remediation cannot start because the target Node
+// could not be found.
 func GetTargetNodeFailed(recorder record.EventRecorder, object runtime.Object) {
 	RemediationCannotStart(recorder, object, remediationCannotStartTargetNodeFailedEventMessage)
 }
