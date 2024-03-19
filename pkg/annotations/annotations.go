@@ -7,7 +7,7 @@ const (
 	// MultipleTemplatesSupportedAnnotation is an annotation that indicates whether multiple templates of the same kind are supported by the template's remediator
 	MultipleTemplatesSupportedAnnotation = "remediation.medik8s.io/multiple-templates-support"
 
-	// NodeNameAnnotation is an annotation that will be placed on the CRs of remediators who support multiple templates of the same remediator.
-	// This is done because the CR will no longer be created with the node name.
+	// NodeNameAnnotation is an annotation that contains the node name and is placed on CRs of remediators which supports multiple templates of the same kind.
+	// It's required in order for the remediator to "know" which unhealthy node the CR represents .
 	NodeNameAnnotation = "remediation.medik8s.io/node-name"
 )
